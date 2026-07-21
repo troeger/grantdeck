@@ -1,0 +1,31 @@
+{% extends "frontend/base.html" %}
+
+{% block title %}Admin login{% endblock %}
+{% block page_class %}login-shell{% endblock %}
+
+{% block content %}
+  <section aria-labelledby="login-title">
+    <h1 id="login-title">{{ brand_name }}</h1>
+
+    <form class="local-login mt-3" method="post" action="{% url 'admin_login' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+
+      {% if form.non_field_errors %}
+        <p role="alert" class="alert alert-danger">
+          {{ form.non_field_errors }}
+        </p>
+      {% endif %}
+
+      <label for="{{ form.username.id_for_label }}">Username</label>
+      {{ form.username }}
+      {{ form.username.errors }}
+
+      <label for="{{ form.password.id_for_label }}">Password</label>
+      {{ form.password }}
+      {{ form.password.errors }}
+
+      <button type="submit" class="btn btn-secondary">Login with registered account</button>
+    </form>
+  </section>
+{% endblock %}

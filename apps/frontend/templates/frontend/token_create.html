@@ -1,0 +1,18 @@
+{% extends "frontend/base.html" %}
+{% load django_bootstrap5 %}
+
+{% block title %}{{ brand_name }}{% endblock %}
+
+{% block content %}
+  {% include "frontend/_navbar.html" %}
+
+  <section aria-labelledby="create-token-title">
+    <h1 id="create-token-title">Create Bearer token</h1>
+
+    <form method="post" action="{% url 'create_token' %}">
+      {% csrf_token %}
+      {% bootstrap_form token_form %}
+      <button type="submit" class="btn btn-primary">Create token</button>
+    </form>
+  </section>
+{% endblock %}

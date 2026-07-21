@@ -1,0 +1,22 @@
+{% load django_bootstrap5 static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+  {% bootstrap_css %}
+  <link rel="stylesheet" href="{% static 'frontend/app.css' %}">
+</head>
+<body>
+  <main class="container my-5 {% block page_class %}{% endblock %}">
+    {% for message in messages %}
+      <p role="alert" class="alert alert-{{ message.tags }}">
+        {{ message }}
+      </p>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{% static 'frontend/app.js' %}"></script>
+</body>
+</html>

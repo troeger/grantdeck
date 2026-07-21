@@ -1,0 +1,191 @@
+import os
+from pathlib import Path
+
+import dj_database_url
+from django.contrib.messages import constants as message_constants
+from django.core.exceptions import ImproperlyConfigured
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+GDK_ENV = os.environ.get('GDK_ENV', 'production')
+IS_DEVELOPMENT = GDK_ENV == 'development'
+REQUIRE_PRODUCTION_ENV = not IS_DEVELOPMENT
+
+
+def env(name, default=None, required=False):
+    value = os.environ.get(name, default)
+    if required and not value:
+        raise ImproperlyConfigured(f'{name} must be set')
+    return value
+
+
+def env_bool(name, default=False):
+    return env(name, str(default)).lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_csv(name, default='', required=False):
+    return [item.strip() for item in env(name, default, required=required).split(',') if item.strip()]
+
+
+def database_config():
+    database_url = env(
+        'GDK_DATABASE_URL',
+        f'sqlite:///{BASE_DIR / "db.sqlite3"}' if IS_DEVELOPMENT else None,
+        required=REQUIRE_PRODUCTION_ENV,
+    )
+    return {
+        'default': dj_database_url.config(
+            env='GDK_DATABASE_URL',
+            default=database_url,
+        ),
+    }
+
+
+SECRET_KEY = env(
+    'GDK_SECRET_KEY',
+    'dev-only-insecure-secret-key-change-me' if IS_DEVELOPMENT else None,
+    required=REQUIRE_PRODUCTION_ENV,
+)
+
+DEBUG = IS_DEVELOPMENT
+
+ALLOWED_HOSTS = env_csv('GDK_ALLOWED_HOSTS', required=REQUIRE_PRODUCTION_ENV)
+CSRF_TRUSTED_ORIGINS = env_csv('GDK_CSRF_TRUSTED_ORIGINS')
+
+BRAND_NAME = env('GDK_BRAND_NAME', 'GrantDeck')
+SSO_LOGIN_BUTTON_TEXT = env('GDK_SSO_LOGIN_BUTTON_TEXT', 'Login with SSO')
+STATIC_TOKEN_MAX_LIFETIME_DAYS = int(env('GDK_STATIC_TOKEN_MAX_LIFETIME_DAYS', '183'))
+STATIC_TOKEN_DEFAULT_LIFETIME_DAYS = min(183, STATIC_TOKEN_MAX_LIFETIME_DAYS)
+PROJECT_JOIN_ATTEMPT_LIMIT = int(env('GDK_PROJECT_JOIN_ATTEMPT_LIMIT', '5'))
+PROJECT_JOIN_ATTEMPT_WINDOW_SECONDS = int(env('GDK_PROJECT_JOIN_ATTEMPT_WINDOW_SECONDS', '600'))
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'grantdeck.apps.AuthConfig',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'django_bootstrap5',
+    'social_django',
+    'apps.authz.apps.AuthzConfig',
+    'apps.frontend.apps.FrontendConfig',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+ROOT_URLCONF = 'grantdeck.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+                'social_django.context_processors.backends',
+                'social_django.context_processors.login_redirect',
+                'apps.frontend.context_processors.branding',
+                'apps.frontend.context_processors.navigation',
+            ],
+        },
+    },
+]
+
+AUTHENTICATION_BACKENDS = [
+    'social_core.backends.open_id_connect.OpenIdConnectAuth',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+SOCIAL_AUTH_URL_NAMESPACE = 'auth'
+SOCIAL_AUTH_OIDC_OIDC_ENDPOINT = env('GDK_OIDC_ENDPOINT', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
+SOCIAL_AUTH_OIDC_KEY = env('GDK_OIDC_CLIENT_ID', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
+SOCIAL_AUTH_OIDC_SECRET = env('GDK_OIDC_CLIENT_SECRET', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
+SOCIAL_AUTH_PIPELINE = (
+    'social_core.pipeline.social_auth.social_details',
+    'social_core.pipeline.social_auth.social_uid',
+    'apps.frontend.pipeline.log_oauth_response',
+    'social_core.pipeline.social_auth.auth_allowed',
+    'social_core.pipeline.social_auth.social_user',
+    'social_core.pipeline.user.get_username',
+    'social_core.pipeline.user.create_user',
+    'social_core.pipeline.social_auth.associate_user',
+    'social_core.pipeline.social_auth.load_extra_data',
+    'social_core.pipeline.user.user_details',
+)
+
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+SESSION_COOKIE_SECURE = env_bool('GDK_SESSION_COOKIE_SECURE')
+CSRF_COOKIE_SECURE = env_bool('GDK_CSRF_COOKIE_SECURE')
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = env_bool('GDK_CSRF_COOKIE_HTTPONLY')
+
+WSGI_APPLICATION = 'grantdeck.wsgi.application'
+
+DATABASES = database_config()
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+LANGUAGE_CODE = 'en-us'
+
+TIME_ZONE = 'Europe/Berlin'
+
+USE_I18N = True
+
+USE_TZ = True
+
+STATIC_URL = 'static/'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'formatters': {
+        'simple': {
+            'format': '%(levelname)s %(name)s %(message)s',
+        },
+    },
+    'loggers': {
+        'apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

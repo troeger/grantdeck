@@ -1,0 +1,346 @@
+import hmac
+import secrets
+from datetime import timedelta
+from urllib.parse import urlsplit, urlunsplit
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, models
+from django.utils import timezone
+
+
+TOKEN_PREFIX = 'gdk_'
+TOKEN_SECRET_BYTES = 32
+MEMBERSHIP_REQUESTED = 'requested'
+MEMBERSHIP_ACTIVE = 'active'
+MEMBERSHIP_STATUS_CHOICES = [
+    (MEMBERSHIP_REQUESTED, 'Requested'),
+    (MEMBERSHIP_ACTIVE, 'Active'),
+]
+
+
+class Project(models.Model):
+    name = models.CharField(max_length=120)
+    end_date = models.DateField(blank=True, null=True, db_index=True)
+    join_code_hash = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    join_requires_approval = models.BooleanField(default=True)
+    administrators = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='administered_projects',
+    )
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through='ProjectMembership',
+        related_name='projects',
+    )
+    resources = models.ManyToManyField(
+        'Resource',
+        through='ProjectResource',
+        related_name='projects',
+    )
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_active(self):
+        return self.end_date is None or self.end_date >= timezone.localdate()
+
+    def resource_for_url(self, url):
+        resource_urls = Resource.matching_urls(url)
+        project_resource = (
+            self.projectresource_set
+            .filter(resource__url__in=resource_urls)
+            .select_related('resource')
+            .order_by('-resource__url')
+            .first()
+        )
+        return project_resource.resource if project_resource else None
+
+    def allows_url(self, url):
+        return self.resource_for_url(url) is not None
+
+    def set_join_code(self, join_code):
+        self.join_code_hash = self.hash_join_code(join_code) if join_code else None
+
+    def check_join_code(self, join_code):
+        return bool(self.join_code_hash and join_code and self.join_code_hash == self.hash_join_code(join_code))
+
+    def join_user(self, user):
+        status = MEMBERSHIP_REQUESTED if self.join_requires_approval else MEMBERSHIP_ACTIVE
+        membership, _ = ProjectMembership.objects.get_or_create(
+            user=user,
+            project=self,
+            defaults={'status': status},
+        )
+        if not self.join_requires_approval and membership.status != MEMBERSHIP_ACTIVE:
+            membership.status = MEMBERSHIP_ACTIVE
+            membership.save(update_fields=['status'])
+        return membership
+
+    def is_administered_by(self, user):
+        return self.administrators.filter(pk=user.pk).exists()
+
+    @staticmethod
+    def hash_join_code(join_code):
+        return hmac.digest(
+            settings.SECRET_KEY.encode(),
+            join_code.encode(),
+            'sha256',
+        ).hex()
+
+    @classmethod
+    def active_projects(cls):
+        return cls.objects.filter(models.Q(end_date__isnull=True) | models.Q(end_date__gte=timezone.localdate()))
+
+    @classmethod
+    def joinable_projects(cls):
+        return cls.active_projects().filter(join_code_hash__isnull=False)
+
+    @classmethod
+    def find_by_join_code(cls, join_code):
+        if not join_code:
+            return None
+        return cls.joinable_projects().filter(join_code_hash=cls.hash_join_code(join_code)).first()
+
+    @classmethod
+    def join_user_by_code(cls, user, join_code):
+        project = cls.find_by_join_code(join_code)
+        return project.join_user(user) if project else None
+
+    @classmethod
+    def token_projects_for_user(cls, user):
+        if user.is_superuser:
+            return cls.active_projects()
+        return cls.active_projects().filter(
+            projectmembership__user=user,
+            projectmembership__status=MEMBERSHIP_ACTIVE,
+        )
+
+    @classmethod
+    def administered_by(cls, user):
+        return cls.objects.filter(administrators=user)
+
+    @classmethod
+    def is_project_admin(cls, user):
+        return (
+            user.is_authenticated
+            and user.is_active
+            and cls.administered_by(user).exists()
+        )
+
+    @classmethod
+    def can_use_admin(cls, user):
+        return user.is_superuser or cls.is_project_admin(user)
+
+    @classmethod
+    def can_administer(cls, user, project):
+        return user.is_superuser or (project is not None and project.is_administered_by(user))
+
+
+class ProjectMembership(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    status = models.CharField(
+        max_length=20,
+        choices=MEMBERSHIP_STATUS_CHOICES,
+        default=MEMBERSHIP_REQUESTED,
+    )
+    class Meta:
+        ordering = ['project', 'user']
+        constraints = [
+            models.UniqueConstraint(fields=['project', 'user'], name='unique_project_membership'),
+        ]
+
+    def __str__(self):
+        return f'{self.project}: {self.user}'
+
+    @property
+    def allows_token_creation(self):
+        return self.status == MEMBERSHIP_ACTIVE and self.project.is_active
+
+    @property
+    def active_tokens(self):
+        return StaticToken.active_for_user(self.user).filter(project=self.project)
+
+
+class Resource(models.Model):
+    url = models.URLField(unique=True)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['url']
+
+    def __str__(self):
+        return self.url
+
+    def clean(self):
+        self.url = self.normalize_url(self.url)
+
+    def save(self, *args, **kwargs):
+        self.url = self.normalize_url(self.url)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def normalize_url(cls, url):
+        parsed = urlsplit(url)
+        if not parsed.scheme or not parsed.hostname:
+            raise ValidationError({'url': 'Enter an absolute URL.'})
+
+        netloc = parsed.hostname.lower()
+        if parsed.port:
+            netloc = f'{netloc}:{parsed.port}'
+
+        path = parsed.path or '/'
+        if path != '/':
+            path = path.rstrip('/')
+
+        return urlunsplit((parsed.scheme.lower(), netloc, path, '', ''))
+
+    @classmethod
+    def matching_urls(cls, url):
+        normalized = cls.normalize_url(url)
+        parsed = urlsplit(normalized)
+        path = parsed.path
+        paths = []
+
+        while path:
+            paths.append(path)
+            if path == '/':
+                break
+            path = path.rsplit('/', 1)[0] or '/'
+
+        return [urlunsplit((parsed.scheme, parsed.netloc, candidate, '', '')) for candidate in paths]
+
+    def matches_url(self, url):
+        return self.url in self.matching_urls(url)
+
+
+class ProjectResource(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE)
+
+    class Meta:
+        ordering = ['project', 'resource']
+        constraints = [
+            models.UniqueConstraint(fields=['project', 'resource'], name='unique_project_resource'),
+        ]
+
+    def __str__(self):
+        return f'{self.project}: {self.resource}'
+
+
+class StaticToken(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='static_tokens',
+    )
+    name = models.CharField(max_length=120)
+    token_hash = models.CharField(max_length=64, unique=True)
+    token_suffix = models.CharField(max_length=3)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    allowed_count = models.PositiveBigIntegerField(default=0)
+    denied_count = models.PositiveBigIntegerField(default=0)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='tokens',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Bearer token'
+        verbose_name_plural = 'Bearer tokens'
+
+    @staticmethod
+    def hash_token(raw_token):
+        return hmac.digest(
+            settings.SECRET_KEY.encode(),
+            raw_token.encode(),
+            'sha256',
+        ).hex()
+
+    @property
+    def token_indicator(self):
+        return f'{TOKEN_PREFIX}...{self.token_suffix}'
+
+    @classmethod
+    def create_token(cls, user, name, lifetime_days, project):
+        raw_token = TOKEN_PREFIX + secrets.token_urlsafe(TOKEN_SECRET_BYTES)
+        token = cls.objects.create(
+            user=user,
+            name=name,
+            token_hash=cls.hash_token(raw_token),
+            token_suffix=raw_token[-3:],
+            expires_at=timezone.now() + timedelta(days=lifetime_days),
+            project=project,
+        )
+        return token, raw_token
+
+    @classmethod
+    def active_filter(cls):
+        return (
+            models.Q(expires_at__gt=timezone.now())
+            & (models.Q(project__end_date__isnull=True) | models.Q(project__end_date__gte=timezone.localdate()))
+        )
+
+    @classmethod
+    def find_valid(cls, raw_token):
+        return (
+            cls.objects
+            .filter(cls.active_filter(), token_hash=cls.hash_token(raw_token))
+            .select_related('user', 'project')
+            .first()
+        )
+
+    @classmethod
+    def active_for_user(cls, user):
+        return cls.objects.filter(cls.active_filter(), user=user).select_related('project')
+
+    def record_allowed(self, resource):
+        StaticToken.objects.filter(pk=self.pk).update(
+            allowed_count=models.F('allowed_count') + 1,
+        )
+        TokenResourceUsage.record_allowed(self, resource)
+
+    def record_denied(self):
+        StaticToken.objects.filter(pk=self.pk).update(
+            denied_count=models.F('denied_count') + 1,
+        )
+
+
+class TokenResourceUsage(models.Model):
+    token = models.ForeignKey(StaticToken, on_delete=models.CASCADE, related_name='resource_usage')
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name='token_usage')
+    allowed_count = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        ordering = ['resource__url']
+        constraints = [
+            models.UniqueConstraint(fields=['token', 'resource'], name='unique_token_resource_usage'),
+        ]
+        verbose_name = 'Bearer token resource usage'
+        verbose_name_plural = 'Bearer token resource usage'
+
+    def __str__(self):
+        return f'{self.token}: {self.resource}'
+
+    @classmethod
+    def record_allowed(cls, token, resource):
+        updated = cls.objects.filter(token=token, resource=resource).update(
+            allowed_count=models.F('allowed_count') + 1,
+        )
+        if updated:
+            return
+
+        try:
+            cls.objects.create(token=token, resource=resource, allowed_count=1)
+        except IntegrityError:
+            cls.objects.filter(token=token, resource=resource).update(
+                allowed_count=models.F('allowed_count') + 1,
+            )

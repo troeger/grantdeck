@@ -1,0 +1,28 @@
+[project]
+name = "grantdeck"
+version = "0.1.0"
+description = "OAuth-backed access self-service UI."
+requires-python = ">=3.12"
+dependencies = [
+    "dj-database-url>=3.0,<4",
+    "Django>=6.0",
+    "django-bootstrap5>=26.2,<27",
+    "psycopg[binary]>=3,<4",
+    "social-auth-app-django>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-django",
+]
+docker = [
+    "gunicorn>=23,<24",
+]
+
+[tool.setuptools.packages.find]
+include = ["grantdeck*", "apps*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "grantdeck.tests.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]

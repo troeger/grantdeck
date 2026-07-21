@@ -1,0 +1,93 @@
+{% extends "frontend/base.html" %}
+{% block title %}{{ brand_name }}{% endblock %}
+
+{% block content %}
+  {% include "frontend/_navbar.html" %}
+
+  <section class="mt-5" aria-labelledby="projects-title">
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+      <h1 id="projects-title">Projects</h1>
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="post" action="{% url 'join_project' %}" class="d-flex gap-2">
+          {% csrf_token %}
+          {{ project_join_form.join_code }}
+          <button type="submit" class="btn btn-outline-primary">Join project</button>
+        </form>
+      </div>
+    </div>
+
+    {% if memberships %}
+      <ul class="list-group mb-4">
+        {% for membership in memberships %}
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between gap-3">
+              <div>
+                <strong>{{ membership.project.name }}</strong>
+                <span class="d-block text-secondary">
+                  Ends {% if membership.project.end_date %}{{ membership.project.end_date|date:"Y-m-d" }}{% else %}never{% endif %}
+                </span>
+                <span class="d-block text-secondary">
+                  Administrators:
+                  {% for administrator in membership.project.administrators.all %}
+                    {% if not forloop.first %}, {% endif %}{{ administrator.get_full_name|default:administrator.get_username }}
+                  {% empty %}
+                    -
+                  {% endfor %}
+                </span>
+              </div>
+              <div class="d-flex gap-2 align-items-start">
+                <span class="text-secondary">{{ membership.get_status_display }}</span>
+                {% if membership.allows_token_creation %}
+                  <a class="btn btn-outline-primary btn-sm" href="{% url 'token_create' %}?project={{ membership.project.id }}">Create token</a>
+                {% endif %}
+              </div>
+            </div>
+
+            {% if membership.active_tokens %}
+              <ul class="list-group mt-3">
+                {% for token in membership.active_tokens %}
+                  <li class="list-group-item d-flex justify-content-between gap-3">
+                    <div>
+                      <strong>{{ token.name }}</strong>
+                      {% if new_static_token.id == token.id %}
+                        <p role="alert" class="alert alert-success mt-2 mb-2">
+                          Copy this token now. It will not be shown again.
+                          <span class="token-copy">
+                            token: <code id="new-token-{{ token.id }}">{{ new_static_token.value }}</code>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-copy-target="new-token-{{ token.id }}" aria-label="Copy token">⧉</button>
+                          </span>
+                        </p>
+                      {% else %}
+                        <span class="d-block text-secondary">token: {{ token.token_indicator }}</span>
+                      {% endif %}
+                      <span class="d-block text-secondary">Created: {{ token.created_at|date:"Y-m-d H:i" }}</span>
+                      <span class="d-block text-secondary">Expires in: {{ token.expires_at|timeuntil }}</span>
+                      <span class="d-block text-secondary">
+                        Usage: {{ token.allowed_count }} allowed, {{ token.denied_count }} denied
+                      </span>
+                      {% for usage in token.resource_usage.all %}
+                        <span class="d-block text-secondary">
+                          {{ usage.resource.url }}: {{ usage.allowed_count }} allowed
+                        </span>
+                      {% endfor %}
+                    </div>
+                    <form method="post" action="{% url 'delete_token' token.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-secondary mt-3 mb-0">No Bearer tokens in this project.</p>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-secondary">No projects.</p>
+      <p class="text-secondary">Join a project to start creating bearer tokens.</p>
+    {% endif %}
+  </section>
+
+{% endblock %}
