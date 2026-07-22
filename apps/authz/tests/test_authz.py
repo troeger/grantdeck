@@ -1,9 +1,11 @@
 from datetime import timedelta
+from itertools import count
 import logging
 
 import pytest
 from django.contrib import admin as django_admin
 from django.contrib.auth.models import Group
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import Client
 from django.urls import reverse
@@ -24,6 +26,13 @@ from apps.authz.models import (
 
 pytestmark = pytest.mark.django_db
 
+project_shortcuts = count(1)
+
+
+def create_project(**fields):
+    fields.setdefault('shortcut', f'project-{next(project_shortcuts)}')
+    return Project.objects.create(**fields)
+
 
 @pytest.fixture
 def user(django_user_model):
@@ -32,7 +41,7 @@ def user(django_user_model):
 
 @pytest.fixture
 def token(user):
-    project = Project.objects.create(name='Token project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Token project', end_date=timezone.localdate() + timedelta(days=30))
     Resource.objects.create(url='http://testserver/')
     ProjectResource.objects.create(project=project, resource=Resource.objects.get(url='http://testserver/'))
     return StaticToken.create_token(user, 'deploy', 30, project)
@@ -40,7 +49,7 @@ def token(user):
 
 @pytest.fixture
 def project(user):
-    project = Project.objects.create(name='Active project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Active project', end_date=timezone.localdate() + timedelta(days=30))
     project.administrators.add(user)
     return project
 
@@ -64,6 +73,7 @@ def assert_empty(response, status):
 
 def project_admin_post_data(**fields):
     return {
+        'shortcut': f'admin-project-{next(project_shortcuts)}',
         'projectmembership_set-TOTAL_FORMS': '0',
         'projectmembership_set-INITIAL_FORMS': '0',
         'projectmembership_set-MIN_NUM_FORMS': '0',
@@ -130,6 +140,35 @@ def test_create_token_can_store_project(user, project):
     token, _ = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert token.project == project
+
+
+@pytest.mark.parametrize('shortcut', ['project_1', 'PROJECT-2', 'Project123'])
+def test_project_shortcut_accepts_strict_http_token_values(shortcut):
+    project = Project(name='Project', shortcut=shortcut)
+
+    project.full_clean()
+
+
+@pytest.mark.parametrize('shortcut', ['', 'has space', 'project.name', 'ümlaut', 'slash/value'])
+def test_project_shortcut_rejects_non_token_safe_values(shortcut):
+    project = Project(name='Project', shortcut=shortcut)
+
+    with pytest.raises(ValidationError):
+        project.full_clean()
+
+
+def test_project_shortcut_is_unique():
+    create_project(name='First', shortcut='shared')
+
+    with pytest.raises(IntegrityError):
+        create_project(name='Second', shortcut='shared')
+
+
+def test_project_shortcut_max_length_is_enforced():
+    project = Project(name='Project', shortcut='a' * 33)
+
+    with pytest.raises(ValidationError):
+        project.full_clean()
 
 
 def test_resource_normalizes_url():
@@ -219,10 +258,10 @@ def test_project_join_without_approval_activates_existing_request(user, project)
 
 
 def test_token_projects_for_user_returns_active_memberships(user):
-    active = Project.objects.create(name='Active member project', end_date=timezone.localdate() + timedelta(days=30))
-    no_end = Project.objects.create(name='No end project')
-    ended = Project.objects.create(name='Ended member project', end_date=timezone.localdate() - timedelta(days=1))
-    requested = Project.objects.create(name='Requested project', end_date=timezone.localdate() + timedelta(days=30))
+    active = create_project(name='Active member project', end_date=timezone.localdate() + timedelta(days=30))
+    no_end = create_project(name='No end project')
+    ended = create_project(name='Ended member project', end_date=timezone.localdate() - timedelta(days=1))
+    requested = create_project(name='Requested project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=active, status=MEMBERSHIP_ACTIVE)
     ProjectMembership.objects.create(user=user, project=no_end, status=MEMBERSHIP_ACTIVE)
     ProjectMembership.objects.create(user=user, project=ended, status=MEMBERSHIP_ACTIVE)
@@ -232,8 +271,8 @@ def test_token_projects_for_user_returns_active_memberships(user):
 
 
 def test_project_membership_allows_token_creation_only_when_active(user):
-    active_project = Project.objects.create(name='Active project')
-    ended_project = Project.objects.create(name='Ended project', end_date=timezone.localdate() - timedelta(days=1))
+    active_project = create_project(name='Active project')
+    ended_project = create_project(name='Ended project', end_date=timezone.localdate() - timedelta(days=1))
     requested = ProjectMembership.objects.create(user=user, project=active_project)
     active = ProjectMembership.objects.create(
         user=user,
@@ -248,12 +287,13 @@ def test_project_membership_allows_token_creation_only_when_active(user):
 
 
 def test_valid_bearer_token_allows_request(client, user, token):
-    _, raw = token
+    stored, raw = token
 
     response = authz(client, raw)
 
     assert_empty(response, 200)
     assert response.headers['x-current-user'] == user.username
+    assert response.headers['x-current-project'] == stored.project.shortcut
     assert response.headers['x-envoy-auth-headers-to-remove'] == 'authorization'
 
 
@@ -300,15 +340,18 @@ def test_project_token_denies_unassigned_resource(client, user, project):
     ProjectResource.objects.create(project=project, resource=resource)
     stored, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
-    assert_empty(authz(client, raw, path='/authz/check/other'), 403)
+    response = authz(client, raw, path='/authz/check/other')
+
+    assert_empty(response, 403)
     stored.refresh_from_db()
     assert stored.allowed_count == 0
     assert stored.denied_count == 1
+    assert 'x-current-project' not in response.headers
     assert not TokenResourceUsage.objects.filter(token=stored).exists()
 
 
 def test_token_in_project_without_end_date_allows_assigned_resource(client, user):
-    project = Project.objects.create(name='No end project')
+    project = create_project(name='No end project')
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=project, resource=resource)
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
@@ -376,7 +419,7 @@ def test_valid_bearer_token_allows_post_without_csrf_token(token):
 
 
 def test_adding_user_to_project_administrators_makes_user_staff(user):
-    project = Project.objects.create(name='Managed')
+    project = create_project(name='Managed')
 
     project.administrators.add(user)
     user.refresh_from_db()
@@ -395,7 +438,7 @@ def test_python_social_auth_models_are_not_registered_in_admin():
 
 
 def test_project_admin_cannot_create_projects(client, project_admin):
-    existing = Project.objects.create(name='Existing')
+    existing = create_project(name='Existing')
     existing.administrators.add(project_admin)
     client.force_login(project_admin)
 
@@ -413,13 +456,81 @@ def test_project_admin_cannot_create_projects(client, project_admin):
     assert not Project.objects.filter(name='First project').exists()
 
 
+def test_superuser_can_create_project_with_shortcut(client, django_user_model):
+    superuser = django_user_model.objects.create_superuser(
+        username='super',
+        email='super@example.test',
+        password='correct-password',
+    )
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse('admin:authz_project_add'),
+        project_admin_post_data(
+            name='First project',
+            shortcut='first_project',
+            administrators=[superuser.pk],
+            join_requires_approval='on',
+            _save='Save',
+        ),
+    )
+
+    assert response.status_code == 302
+    assert Project.objects.filter(name='First project', shortcut='first_project').exists()
+
+
+def test_admin_rejects_duplicate_project_shortcut(client, django_user_model):
+    superuser = django_user_model.objects.create_superuser(
+        username='super',
+        email='super@example.test',
+        password='correct-password',
+    )
+    create_project(name='First', shortcut='shared')
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse('admin:authz_project_add'),
+        project_admin_post_data(
+            name='Second',
+            shortcut='shared',
+            administrators=[superuser.pk],
+            _save='Save',
+        ),
+    )
+
+    assert response.status_code == 200
+    assert not Project.objects.filter(name='Second').exists()
+
+
+def test_admin_rejects_unsafe_project_shortcut(client, django_user_model):
+    superuser = django_user_model.objects.create_superuser(
+        username='super',
+        email='super@example.test',
+        password='correct-password',
+    )
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse('admin:authz_project_add'),
+        project_admin_post_data(
+            name='Unsafe',
+            shortcut='unsafe.value',
+            administrators=[superuser.pk],
+            _save='Save',
+        ),
+    )
+
+    assert response.status_code == 200
+    assert not Project.objects.filter(name='Unsafe').exists()
+
+
 def test_superuser_can_set_replace_and_clear_project_join_code(client, django_user_model):
     superuser = django_user_model.objects.create_superuser(
         username='super',
         email='super@example.test',
         password='correct-password',
     )
-    project = Project.objects.create(name='Managed')
+    project = create_project(name='Managed')
     client.force_login(superuser)
     url = reverse('admin:authz_project_change', args=[project.pk])
 
@@ -469,10 +580,10 @@ def test_duplicate_project_join_code_is_rejected_in_admin(client, django_user_mo
         email='super@example.test',
         password='correct-password',
     )
-    first = Project.objects.create(name='First')
+    first = create_project(name='First')
     first.set_join_code('shared')
     first.save(update_fields=['join_code_hash'])
-    second = Project.objects.create(name='Second')
+    second = create_project(name='Second')
     client.force_login(superuser)
 
     response = client.post(
@@ -491,13 +602,13 @@ def test_duplicate_project_join_code_is_rejected_in_admin(client, django_user_mo
 
 
 def test_project_admin_can_change_administered_project_properties(client, project_admin):
-    managed = Project.objects.create(name='Managed')
+    managed = create_project(name='Managed')
     managed.administrators.add(project_admin)
     client.force_login(project_admin)
 
     response = client.post(
         reverse('admin:authz_project_change', args=[managed.pk]),
-        {'name': 'Managed', 'join_code': 'managed-code', '_save': 'Save'},
+        {'name': 'Managed', 'shortcut': managed.shortcut, 'join_code': 'managed-code', '_save': 'Save'},
     )
     managed.refresh_from_db()
 
@@ -506,13 +617,13 @@ def test_project_admin_can_change_administered_project_properties(client, projec
 
 
 def test_project_admin_sees_only_administered_projects(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=managed, resource=resource)
     StaticToken.create_token(user, 'managed-token-1', 30, managed)
     StaticToken.create_token(user, 'managed-token-2', 30, managed)
-    Project.objects.create(name='Other', end_date=timezone.localdate() + timedelta(days=30))
+    create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
     client.force_login(project_admin)
 
     response = client.get(reverse('admin:authz_project_changelist'))
@@ -524,7 +635,7 @@ def test_project_admin_sees_only_administered_projects(client, user, project_adm
 
 
 def test_project_administrator_can_use_membership_admin(client, user):
-    managed = Project.objects.create(name='Managed')
+    managed = create_project(name='Managed')
     managed.administrators.add(user)
     membership = ProjectMembership.objects.create(user=user, project=managed)
     client.force_login(user)
@@ -536,8 +647,8 @@ def test_project_administrator_can_use_membership_admin(client, user):
 
 
 def test_project_admin_cannot_change_unrelated_project(client, project_admin):
-    Project.objects.create(name='Managed').administrators.add(project_admin)
-    other = Project.objects.create(name='Other', end_date=timezone.localdate() + timedelta(days=30))
+    create_project(name='Managed').administrators.add(project_admin)
+    other = create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
     client.force_login(project_admin)
 
     response = client.get(reverse('admin:authz_project_change', args=[other.pk]))
@@ -546,7 +657,7 @@ def test_project_admin_cannot_change_unrelated_project(client, project_admin):
 
 
 def test_project_admin_cannot_delete_administered_project(client, project_admin):
-    managed = Project.objects.create(name='Managed')
+    managed = create_project(name='Managed')
     managed.administrators.add(project_admin)
     client.force_login(project_admin)
 
@@ -557,9 +668,9 @@ def test_project_admin_cannot_delete_administered_project(client, project_admin)
 
 
 def test_project_admin_cannot_use_bearer_token_admin(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
-    other = Project.objects.create(name='Other', end_date=timezone.localdate() + timedelta(days=30))
+    other = create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
     StaticToken.create_token(user, 'managed-token', 30, managed)
     StaticToken.create_token(user, 'other-token', 30, other)
     client.force_login(project_admin)
@@ -570,7 +681,7 @@ def test_project_admin_cannot_use_bearer_token_admin(client, user, project_admin
 
 
 def test_project_admin_cannot_view_tokens_in_admin(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
     token, _ = StaticToken.create_token(user, 'managed-token', 30, managed)
     client.force_login(project_admin)
@@ -581,7 +692,7 @@ def test_project_admin_cannot_view_tokens_in_admin(client, user, project_admin):
 
 
 def test_project_admin_cannot_delete_administered_project_token(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
     token, _ = StaticToken.create_token(user, 'managed-token', 30, managed)
     client.force_login(project_admin)
@@ -593,7 +704,7 @@ def test_project_admin_cannot_delete_administered_project_token(client, user, pr
 
 
 def test_project_admin_cannot_create_tokens_in_admin(client, project_admin):
-    Project.objects.create(name='Managed').administrators.add(project_admin)
+    create_project(name='Managed').administrators.add(project_admin)
     client.force_login(project_admin)
 
     response = client.get(reverse('admin:authz_statictoken_add'))
@@ -602,9 +713,9 @@ def test_project_admin_cannot_create_tokens_in_admin(client, project_admin):
 
 
 def test_project_admin_sees_only_administered_project_memberships(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
-    other = Project.objects.create(name='Other', end_date=timezone.localdate() + timedelta(days=30))
+    other = create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
     managed_membership = ProjectMembership.objects.create(user=user, project=managed)
     ProjectMembership.objects.create(user=user, project=other)
     client.force_login(project_admin)
@@ -616,7 +727,7 @@ def test_project_admin_sees_only_administered_project_memberships(client, user, 
 
 
 def test_project_admin_can_activate_administered_project_membership(client, user, project_admin):
-    managed = Project.objects.create(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
+    managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
     membership = ProjectMembership.objects.create(user=user, project=managed)
     client.force_login(project_admin)
@@ -632,8 +743,8 @@ def test_project_admin_can_activate_administered_project_membership(client, user
 
 
 def test_project_admin_cannot_change_unrelated_project_membership(client, user, project_admin):
-    Project.objects.create(name='Managed').administrators.add(project_admin)
-    other = Project.objects.create(name='Other', end_date=timezone.localdate() + timedelta(days=30))
+    create_project(name='Managed').administrators.add(project_admin)
+    other = create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
     membership = ProjectMembership.objects.create(user=user, project=other)
     client.force_login(project_admin)
 
@@ -655,7 +766,7 @@ def test_superuser_can_manage_resources_in_admin(client, django_user_model):
 
 
 def test_project_admin_cannot_manage_resources_in_admin(client, project_admin):
-    Project.objects.create(name='Managed').administrators.add(project_admin)
+    create_project(name='Managed').administrators.add(project_admin)
     client.force_login(project_admin)
 
     assert client.get(reverse('admin:authz_resource_changelist')).status_code == 403

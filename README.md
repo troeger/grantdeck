@@ -81,7 +81,7 @@ authz request:     GET /authz/check/api/models
 checked resource:  https://api.example.com/api/models
 ```
 
-GrantDeck returns the authenticated user in the `x-current-user` HTTP header, so it must be enabled in the `allowed_upstream_headers` block for `authorization_response` accordingly.
+GrantDeck returns the authenticated user in the `x-current-user` HTTP header and the project shortcut in the `x-current-project` HTTP header, so both must be enabled in the `allowed_upstream_headers` block for `authorization_response` accordingly.
 
 GrantDeck reconstructs the checked URL from the auth request scheme, host, and stripped path. It always uses `X-Forwarded-Proto` and `X-Forwarded-Host`, so configure Envoy to pass values that represent the original client request.
 
@@ -103,4 +103,3 @@ The coding guidelines are intended for coding agents and human collaborators:
 - Tests are located in a "tests" folder.
 - Keep user-facing names such as "Bearer token" consistent.
 - Avoiding custom prefetch machinery is more valuable than minimizing query count.
-

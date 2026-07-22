@@ -1,4 +1,5 @@
 from datetime import timedelta
+from itertools import count
 import logging
 
 import pytest
@@ -14,6 +15,13 @@ from apps.frontend.views import NEW_STATIC_TOKEN_SESSION_KEY
 
 
 pytestmark = pytest.mark.django_db
+
+project_shortcuts = count(1)
+
+
+def create_project(**fields):
+    fields.setdefault('shortcut', f'frontend-project-{next(project_shortcuts)}')
+    return Project.objects.create(**fields)
 
 
 @pytest.fixture
@@ -113,7 +121,7 @@ def test_home_renders_for_authenticated_users(client, user):
 
 
 def test_home_allows_token_creation_with_active_project(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -123,7 +131,7 @@ def test_home_allows_token_creation_with_active_project(client, user):
 
 
 def test_token_create_prefills_project_from_query(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -136,7 +144,7 @@ def test_token_create_prefills_project_from_query(client, user):
 def test_project_administrator_gets_admin_navigation_access(user):
     user.is_staff = True
     user.save(update_fields=['is_staff'])
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.administrators.add(user)
 
     assert show_admin_link(user)
@@ -144,8 +152,8 @@ def test_project_administrator_gets_admin_navigation_access(user):
 
 def test_home_lists_only_current_users_unexpired_tokens(client, user, django_user_model):
     other_user = django_user_model.objects.create_user(username='other')
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
-    other_project = Project.objects.create(name='Other project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    other_project = create_project(name='Other project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     current_token, _ = StaticToken.create_token(user, 'current', 30, project)
     StaticToken.create_token(other_user, 'other', 30, other_project)
@@ -161,7 +169,7 @@ def test_home_lists_only_current_users_unexpired_tokens(client, user, django_use
 
 
 def test_home_includes_current_token_usage(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     token, _ = StaticToken.create_token(user, 'current', 30, project)
@@ -176,7 +184,7 @@ def test_home_includes_current_token_usage(client, user):
 
 
 def test_home_lists_current_users_project_memberships(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     membership = ProjectMembership.objects.create(user=user, project=project)
     client.force_login(user)
 
@@ -186,7 +194,7 @@ def test_home_lists_current_users_project_memberships(client, user):
 
 
 def test_requested_membership_shows_project_without_token_creation(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     membership = ProjectMembership.objects.create(user=user, project=project)
     client.force_login(user)
 
@@ -204,7 +212,7 @@ def test_home_lists_project_administrators(client, user, django_user_model):
         first_name='Admin',
         last_name='User',
     )
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     project.administrators.add(administrator)
     ProjectMembership.objects.create(user=user, project=project)
     client.force_login(user)
@@ -216,7 +224,7 @@ def test_home_lists_project_administrators(client, user, django_user_model):
 
 
 def test_home_lists_ended_project_memberships(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() - timedelta(days=1))
+    project = create_project(name='Project', end_date=timezone.localdate() - timedelta(days=1))
     membership = ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -227,7 +235,7 @@ def test_home_lists_ended_project_memberships(client, user):
 
 
 def test_user_can_join_project_with_code_pending_approval(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     client.force_login(user)
@@ -240,7 +248,7 @@ def test_user_can_join_project_with_code_pending_approval(client, user):
 
 
 def test_user_can_join_project_with_code_without_approval(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.join_requires_approval = False
     project.save(update_fields=['join_code_hash', 'join_requires_approval'])
@@ -254,7 +262,7 @@ def test_user_can_join_project_with_code_without_approval(client, user):
 
 
 def test_joined_project_without_approval_allows_token_creation(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.join_requires_approval = False
     project.save(update_fields=['join_code_hash', 'join_requires_approval'])
@@ -268,7 +276,7 @@ def test_joined_project_without_approval_allows_token_creation(client, user):
 
 
 def test_duplicate_project_join_is_noop(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     ProjectMembership.objects.create(user=user, project=project)
@@ -281,7 +289,7 @@ def test_duplicate_project_join_is_noop(client, user):
 
 
 def test_wrong_project_join_code_returns_forbidden(client, user):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     client.force_login(user)
@@ -297,7 +305,7 @@ def test_wrong_project_join_code_returns_forbidden(client, user):
 @override_settings(PROJECT_JOIN_ATTEMPT_LIMIT=2)
 def test_project_join_rate_limit_blocks_repeated_attempts(client, user):
     cache.clear()
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     client.force_login(user)
@@ -314,7 +322,7 @@ def test_project_join_rate_limit_blocks_repeated_attempts(client, user):
 @override_settings(PROJECT_JOIN_ATTEMPT_LIMIT=2)
 def test_successful_project_join_resets_rate_limit(client, user):
     cache.clear()
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     client.force_login(user)
@@ -325,7 +333,7 @@ def test_successful_project_join_resets_rate_limit(client, user):
 
 
 def test_membership_join_for_ended_project_returns_forbidden(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() - timedelta(days=1))
+    project = create_project(name='Project', end_date=timezone.localdate() - timedelta(days=1))
     project.set_join_code('project-code')
     project.save(update_fields=['join_code_hash'])
     client.force_login(user)
@@ -338,7 +346,7 @@ def test_membership_join_for_ended_project_returns_forbidden(client, user):
 
 
 def test_create_token_uses_default_lifetime_and_shows_raw_token_once(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -357,7 +365,7 @@ def test_create_token_uses_default_lifetime_and_shows_raw_token_once(client, use
 
 
 def test_create_token_accepts_shorter_lifetime(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -367,7 +375,7 @@ def test_create_token_accepts_shorter_lifetime(client, user):
 
 
 def test_create_token_rejects_invalid_lifetime(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -379,7 +387,7 @@ def test_create_token_rejects_invalid_lifetime(client, user):
 
 @override_settings(STATIC_TOKEN_MAX_LIFETIME_DAYS=7, STATIC_TOKEN_DEFAULT_LIFETIME_DAYS=7)
 def test_create_token_uses_configured_max_lifetime(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project, status=MEMBERSHIP_ACTIVE)
     client.force_login(user)
 
@@ -399,7 +407,7 @@ def test_user_cannot_create_token_without_project(client, user):
 
 
 def test_requested_membership_does_not_allow_token_creation(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     ProjectMembership.objects.create(user=user, project=project)
     client.force_login(user)
 
@@ -419,7 +427,7 @@ def test_superuser_cannot_create_token_without_project(client, admin):
 
 
 def test_superuser_can_create_token_for_active_project(client, admin):
-    project = Project.objects.create(name='Project')
+    project = create_project(name='Project')
     client.force_login(admin)
 
     response = client.post('/tokens/', {'name': 'admin-token', 'project': project.pk, 'lifetime_days': '183'})
@@ -430,7 +438,7 @@ def test_superuser_can_create_token_for_active_project(client, admin):
 
 
 def test_delete_token_removes_current_users_token(client, user):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     token, _ = StaticToken.create_token(user, 'delete-me', 30, project)
     client.force_login(user)
 
@@ -442,7 +450,7 @@ def test_delete_token_removes_current_users_token(client, user):
 
 
 def test_delete_token_does_not_remove_other_users_token(client, user, django_user_model):
-    project = Project.objects.create(name='Project', end_date=timezone.localdate() + timedelta(days=30))
+    project = create_project(name='Project', end_date=timezone.localdate() + timedelta(days=30))
     token, _ = StaticToken.create_token(django_user_model.objects.create_user(username='other'), 'keep-me', 30, project)
     client.force_login(user)
 

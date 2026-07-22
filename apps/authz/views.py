@@ -71,5 +71,6 @@ def envoy_authz_check(request, protected_path=''):
     _log_authz(request, 200, 'allowed', username, protected_url)
     response = HttpResponse(status=200)
     response['x-current-user'] = username
+    response['x-current-project'] = token.project.shortcut
     response['x-envoy-auth-headers-to-remove'] = 'authorization'
     return response

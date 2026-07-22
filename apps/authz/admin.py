@@ -30,7 +30,7 @@ class ProjectAdminForm(forms.ModelForm):
 
     class Meta:
         model = Project
-        fields = ['name', 'end_date', 'administrators', 'join_requires_approval']
+        fields = ['name', 'shortcut', 'end_date', 'administrators', 'join_requires_approval']
 
     def clean_join_code(self):
         join_code = self.cleaned_data['join_code']
@@ -85,8 +85,8 @@ class ProjectScopedAdmin(admin.ModelAdmin):
 @admin.register(Project)
 class ProjectAdmin(ProjectScopedAdmin):
     form = ProjectAdminForm
-    list_display = ['name', 'end_date', 'administrators_list', 'token_count', 'resource_count']
-    search_fields = ['name']
+    list_display = ['name', 'shortcut', 'end_date', 'administrators_list', 'token_count', 'resource_count']
+    search_fields = ['name', 'shortcut']
     filter_horizontal = ['administrators']
     inlines = [ProjectMembershipInline, ProjectResourceInline]
 
@@ -121,8 +121,8 @@ class ProjectAdmin(ProjectScopedAdmin):
 
     def get_fields(self, request, obj=None):
         if not request.user.is_superuser:
-            return ['name', 'end_date', 'join_requires_approval', 'join_code', 'clear_join_code']
-        return ['name', 'end_date', 'administrators', 'join_requires_approval', 'join_code', 'clear_join_code']
+            return ['name', 'shortcut', 'end_date', 'join_requires_approval', 'join_code', 'clear_join_code']
+        return ['name', 'shortcut', 'end_date', 'administrators', 'join_requires_approval', 'join_code', 'clear_join_code']
 
     def get_inline_instances(self, request, obj=None):
         if request.user.is_superuser:

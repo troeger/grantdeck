@@ -5,6 +5,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import IntegrityError, models
 from django.utils import timezone
 
@@ -17,10 +18,19 @@ MEMBERSHIP_STATUS_CHOICES = [
     (MEMBERSHIP_REQUESTED, 'Requested'),
     (MEMBERSHIP_ACTIVE, 'Active'),
 ]
+PROJECT_SHORTCUT_VALIDATOR = RegexValidator(
+    r'^[A-Za-z0-9_-]+$',
+    'Use only ASCII letters, digits, underscores, and hyphens.',
+)
 
 
 class Project(models.Model):
     name = models.CharField(max_length=120)
+    shortcut = models.CharField(
+        max_length=32,
+        unique=True,
+        validators=[PROJECT_SHORTCUT_VALIDATOR],
+    )
     end_date = models.DateField(blank=True, null=True, db_index=True)
     join_code_hash = models.CharField(max_length=64, blank=True, null=True, unique=True)
     join_requires_approval = models.BooleanField(default=True)
