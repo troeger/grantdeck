@@ -44,6 +44,7 @@ You can use `manage.py createsuperuser` in combination with the `/login/admin` e
 | `GDK_SESSION_COOKIE_SECURE`               | No                    | No                     | `false`          | Enables Django secure session cookies.                        |
 | `GDK_CSRF_COOKIE_SECURE`                  | No                    | No                     | `false`          | Enables Django secure CSRF cookies.                           |
 | `GDK_CSRF_COOKIE_HTTPONLY`                | No                    | No                     | `false`          | Enables Django HTTP-only CSRF cookies.                        |
+| `GDK_LOG_LEVEL`                           | No                    | No                     | `INFO`           | Log level for GrantDeck and Django request logs.               |
 
 ## Health checks
 

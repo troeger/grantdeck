@@ -139,6 +139,7 @@ SESSION_COOKIE_SECURE = env_bool('GDK_SESSION_COOKIE_SECURE')
 CSRF_COOKIE_SECURE = env_bool('GDK_CSRF_COOKIE_SECURE')
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = env_bool('GDK_CSRF_COOKIE_HTTPONLY')
+GDK_LOG_LEVEL = env('GDK_LOG_LEVEL', 'INFO').upper()
 
 WSGI_APPLICATION = 'grantdeck.wsgi.application'
 
@@ -186,7 +187,12 @@ LOGGING = {
     'loggers': {
         'apps': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': GDK_LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': GDK_LOG_LEVEL,
             'propagate': False,
         },
     },

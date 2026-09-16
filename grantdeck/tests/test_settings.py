@@ -20,6 +20,7 @@ GDK_ENV_VARS = [
     'GDK_OIDC_CLIENT_SECRET',
     'GDK_STATIC_TOKEN_MAX_LIFETIME_DAYS',
     'GDK_SCRIPT_NAME',
+    'GDK_LOG_LEVEL',
 ]
 
 PRODUCTION_ENV = {
@@ -70,6 +71,8 @@ def test_production_settings_load_with_required_environment(monkeypatch):
     assert loaded.DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql'
     assert loaded.SOCIAL_AUTH_OIDC_KEY == 'client-id'
     assert loaded.SOCIAL_AUTH_OIDC_TOKEN_ENDPOINT_AUTH_METHOD == 'client_secret_post'
+    assert loaded.GDK_LOG_LEVEL == 'INFO'
+    assert loaded.LOGGING['loggers']['django.request']['level'] == 'INFO'
     backend = OpenIdConnectAuth(strategy=DjangoStrategy(storage=None))
     assert backend.use_basic_auth() is False
     assert loaded.SECURE_PROXY_SSL_HEADER == ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -86,6 +89,18 @@ def test_development_settings_keep_local_defaults(monkeypatch):
     assert loaded.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3'
     assert loaded.DATABASES['default']['NAME'] == str(loaded.BASE_DIR / 'db.sqlite3')
     assert loaded.FORCE_SCRIPT_NAME is None
+
+
+def test_log_level_can_enable_request_debug_logs(monkeypatch):
+    loaded = reload_settings(
+        monkeypatch,
+        **PRODUCTION_ENV,
+        GDK_LOG_LEVEL='debug',
+    )
+
+    assert loaded.GDK_LOG_LEVEL == 'DEBUG'
+    assert loaded.LOGGING['loggers']['apps']['level'] == 'DEBUG'
+    assert loaded.LOGGING['loggers']['django.request']['level'] == 'DEBUG'
 
 
 def test_script_name_can_be_configured(monkeypatch):
