@@ -4,6 +4,8 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
 from django.test import Client
+from social_core.backends.open_id_connect import OpenIdConnectAuth
+from social_django.strategy import DjangoStrategy
 
 from grantdeck import settings
 
@@ -67,6 +69,9 @@ def test_production_settings_load_with_required_environment(monkeypatch):
     assert loaded.ALLOWED_HOSTS == ['grantdeck.example.test', 'grantdeck.internal']
     assert loaded.DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql'
     assert loaded.SOCIAL_AUTH_OIDC_KEY == 'client-id'
+    assert loaded.SOCIAL_AUTH_OIDC_TOKEN_ENDPOINT_AUTH_METHOD == 'client_secret_post'
+    backend = OpenIdConnectAuth(strategy=DjangoStrategy(storage=None))
+    assert backend.use_basic_auth() is False
     assert loaded.SECURE_PROXY_SSL_HEADER == ('HTTP_X_FORWARDED_PROTO', 'https')
     assert loaded.USE_X_FORWARDED_HOST is True
     assert loaded.STATIC_TOKEN_MAX_LIFETIME_DAYS == 183
