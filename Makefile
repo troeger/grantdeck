@@ -1,4 +1,4 @@
-.PHONY: venv run test
+.PHONY: venv run test release
 
 venv: .venv/.installed
 
@@ -18,3 +18,9 @@ run: venv
 
 test: .venv/.dev-installed
 	.venv/bin/python -m pytest
+
+release:
+	@test -n "$(VERSION)" || { echo 'Usage: make release VERSION=1.2.3' >&2; exit 1; }
+	@printf '%s\n' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo 'VERSION must use MAJOR.MINOR.PATCH, for example 1.2.3' >&2; exit 1; }
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	git push origin "v$(VERSION)"
