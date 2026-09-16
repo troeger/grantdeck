@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.authz.models import MEMBERSHIP_ACTIVE, Project, ProjectMembership, Resource, StaticToken, TokenResourceUsage
 from apps.frontend.context_processors import show_admin_link
-from apps.frontend.pipeline import log_oauth_response
+from apps.frontend.pipeline import log_oauth_response, promote_oidc_admin
 from apps.frontend.views import NEW_STATIC_TOKEN_SESSION_KEY
 
 
@@ -108,6 +108,33 @@ def test_oauth_provider_response_is_logged(caplog):
     assert record.oauth_details == details
     assert record.oauth_response == response
     assert '"access_token": "token-value"' in record.message
+
+
+def test_configured_oidc_user_is_promoted_to_admin(user, settings):
+    settings.GDK_OIDC_ADMIN_USERNAME = user.username
+
+    promote_oidc_admin(None, {}, {}, user=user)
+
+    user.refresh_from_db()
+    assert user.is_staff and user.is_superuser
+
+
+def test_other_oidc_user_is_not_promoted(user, settings):
+    settings.GDK_OIDC_ADMIN_USERNAME = 'different-user'
+
+    promote_oidc_admin(None, {}, {}, user=user)
+
+    user.refresh_from_db()
+    assert not user.is_staff and not user.is_superuser
+
+
+def test_oidc_username_from_provider_details_promotes_user(user, settings):
+    settings.GDK_OIDC_ADMIN_USERNAME = 'provider-name'
+
+    promote_oidc_admin(None, {'username': 'provider-name'}, {}, user=user)
+
+    user.refresh_from_db()
+    assert user.is_staff and user.is_superuser
 
 
 def test_home_renders_for_authenticated_users(client, user):

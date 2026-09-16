@@ -114,6 +114,7 @@ SOCIAL_AUTH_URL_NAMESPACE = 'auth'
 SOCIAL_AUTH_OIDC_OIDC_ENDPOINT = env('GDK_OIDC_ENDPOINT', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
 SOCIAL_AUTH_OIDC_KEY = env('GDK_OIDC_CLIENT_ID', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
 SOCIAL_AUTH_OIDC_SECRET = env('GDK_OIDC_CLIENT_SECRET', '' if IS_DEVELOPMENT else None, required=REQUIRE_PRODUCTION_ENV)
+GDK_OIDC_ADMIN_USERNAME = env('GDK_OIDC_ADMIN_USERNAME', '')
 SOCIAL_AUTH_OIDC_TOKEN_ENDPOINT_AUTH_METHOD = 'client_secret_post'
 SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.social_auth.social_details',
@@ -126,6 +127,7 @@ SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.social_auth.associate_user',
     'social_core.pipeline.social_auth.load_extra_data',
     'social_core.pipeline.user.user_details',
+    'apps.frontend.pipeline.promote_oidc_admin',
 )
 
 LOGIN_URL = f'{FORCE_SCRIPT_NAME or ""}/login/'

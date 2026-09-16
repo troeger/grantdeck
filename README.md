@@ -36,9 +36,7 @@ You can use `manage.py createsuperuser` in combination with the `/login/admin` e
 | `GDK_OIDC_ENDPOINT`                       | No                    | Yes                    | `""`             | OpenID Connect issuer endpoint.                               |
 | `GDK_OIDC_CLIENT_ID`                      | No                    | Yes                    | `""`             | OpenID Connect client ID.                                     |
 | `GDK_OIDC_CLIENT_SECRET`                  | No                    | Yes                    | `""`             | OpenID Connect client secret.                                 |
-| `GDK_ADMIN_USERNAME`                      | No                    | No                     | `""`             | Optional username for the initial local Django superuser.     |
-| `GDK_ADMIN_EMAIL`                         | No                    | No                     | `""`             | Email address for the initial local Django superuser.         |
-| `GDK_ADMIN_PASSWORD`                      | No                    | No                     | `""`             | Password used only when creating the initial local superuser. |
+| `GDK_OIDC_ADMIN_USERNAME`                 | No                    | No                     | `""`             | OIDC username promoted to Django superuser on login.          |
 | `GDK_BRAND_NAME`                          | No                    | No                     | `GrantDeck`      | Product name shown in the frontend.                           |
 | `GDK_SSO_LOGIN_BUTTON_TEXT`               | No                    | No                     | `Login with SSO` | Text for the SSO login button.                                |
 | `GDK_STATIC_TOKEN_MAX_LIFETIME_DAYS`      | No                    | No                     | `183`            | Maximum lifetime for newly created Bearer tokens.             |
@@ -85,7 +83,7 @@ cp deploy/k8s/overlays/production/secret.env.example deploy/k8s/overlays/product
 
 Set a strong random `GDK_SECRET_KEY` and the OIDC client secret. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Set `K8S_NAMESPACE`, `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `GATEWAY_SECTION`, `PVC_SIZE`, and `IMAGE` in `config.env` to match your cluster. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
 
-To create an initial local Django administrator without shell access to the pod, set `GDK_ADMIN_USERNAME` and `GDK_ADMIN_PASSWORD` in the generated ConfigMap and Secret inputs before the first deployment. The startup process creates that superuser after migrations. Subsequent starts leave an existing superuser and its password unchanged; remove the bootstrap variables after the first successful login if desired.
+To grant Django administrator access to an OIDC account, set `GDK_OIDC_ADMIN_USERNAME` in the generated ConfigMap input. When that username completes OIDC login, GrantDeck promotes the account to superuser and staff. No shell access or local password is required.
 
 Render and apply the resources with:
 
