@@ -9,7 +9,8 @@ from django.core.management import call_command
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "grantdeck.settings")
     django.setup()
-    logging.getLogger('apps').info('Starting GrantDeck version %s', version('grantdeck'))
+    release_tag = os.environ.get('GDK_RELEASE_TAG') or version('grantdeck')
+    logging.getLogger('apps').info('Starting GrantDeck version %s', release_tag)
     call_command("migrate", interactive=False)
     os.execvp(
         "gunicorn",

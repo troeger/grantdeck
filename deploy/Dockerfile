@@ -12,9 +12,12 @@ RUN pip install --no-cache-dir --prefix=/usr/local ".[docker]"
 
 FROM cgr.dev/chainguard/python:latest
 
+ARG GDK_RELEASE_TAG=
+
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/usr/local/bin:${PATH}"
 ENV PYTHONPATH="/app:/usr/local/lib/python3.14/site-packages"
+ENV GDK_RELEASE_TAG=${GDK_RELEASE_TAG}
 
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder --chown=65532:65532 /app /app

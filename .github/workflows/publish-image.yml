@@ -32,6 +32,8 @@ jobs:
           context: .
           file: deploy/Dockerfile
           push: true
+          build-args: |
+            GDK_RELEASE_TAG=${{ github.ref_name }}
           tags: |
             ghcr.io/troeger/grantdeck:${{ github.ref_name }}
             ghcr.io/troeger/grantdeck:latest
