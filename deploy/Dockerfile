@@ -8,7 +8,8 @@ COPY apps ./apps
 COPY grantdeck ./grantdeck
 COPY deploy ./deploy
 
-RUN pip install --no-cache-dir --prefix=/usr/local ".[docker]"
+RUN pip install --no-cache-dir --prefix=/usr/local ".[docker]" \
+    && PYTHONPATH=/usr/local/lib/python3.14/site-packages GDK_ENV=development python manage.py collectstatic --noinput
 
 FROM cgr.dev/chainguard/python:latest
 

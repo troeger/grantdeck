@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+from django.conf import settings
 from django.urls import include, path
+from django.views.static import serve
 
 from apps.authz import views as authz_views
 from apps.frontend import views as frontend_views
@@ -11,6 +13,7 @@ admin.site.site_title = 'GrantDeck administration'
 admin.site.index_title = 'GrantDeck administration'
 
 urlpatterns = [
+    path('static/<path:path>', serve, {'document_root': settings.STATIC_ROOT}),
     path('healthz/', grantdeck_views.healthz, name='healthz'),
     path('readyz/', grantdeck_views.readyz, name='readyz'),
     path('authz/check/', authz_views.envoy_authz_check, name='envoy_authz_check'),

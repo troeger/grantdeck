@@ -169,6 +169,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = f'{FORCE_SCRIPT_NAME or ""}/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 LOGGING = {
     'version': 1,
