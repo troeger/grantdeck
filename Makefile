@@ -1,4 +1,4 @@
-.PHONY: venv run test release
+.PHONY: venv run test deploy release
 
 venv: .venv/.installed
 
@@ -18,6 +18,9 @@ run: venv
 
 test: .venv/.dev-installed
 	.venv/bin/python -m pytest
+
+deploy:
+	kubectl apply -k deploy/k8s/overlays/production
 
 release:
 	@test -n "$(VERSION)" || { echo 'Usage: make release VERSION=1.2.3' >&2; exit 1; }

@@ -24,7 +24,7 @@ spec:
       containers:
         - name: grantdeck
           image: ghcr.io/troeger/grantdeck:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8000
@@ -37,21 +37,32 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: tmp
+              mountPath: /tmp
           startupProbe:
             httpGet:
               path: /healthz/
               port: http
+              httpHeaders:
+                - name: Host
+                  value: grantdeck.example.com
             periodSeconds: 5
             failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /healthz/
               port: http
+              httpHeaders:
+                - name: Host
+                  value: grantdeck.example.com
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /readyz/
               port: http
+              httpHeaders:
+                - name: Host
+                  value: grantdeck.example.com
             periodSeconds: 10
           securityContext:
             allowPrivilegeEscalation: false
@@ -70,3 +81,5 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: grantdeck-data
+        - name: tmp
+          emptyDir: {}

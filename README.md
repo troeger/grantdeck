@@ -79,16 +79,16 @@ Create the local credentials file and replace both placeholder values:
 cp deploy/k8s/overlays/production/secret.env.example deploy/k8s/overlays/production/secret.env
 ```
 
-Set a strong random `GDK_SECRET_KEY` and the OIDC client secret. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Update the namespace in `kustomization.yaml`, and set `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `PVC_SIZE`, and `IMAGE` in `config.env` to match your cluster. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
+Set a strong random `GDK_SECRET_KEY` and the OIDC client secret. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Set `K8S_NAMESPACE`, `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `GATEWAY_SECTION`, `PVC_SIZE`, and `IMAGE` in `config.env` to match your cluster. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
 
 Render and apply the resources with:
 
 ```bash
 kubectl kustomize deploy/k8s/overlays/production
-kubectl apply -k deploy/k8s/overlays/production
+make deploy
 ```
 
-The cluster must have the Gateway API v1 CRDs installed and an existing Gateway with a listener that accepts routes from the `grantdeck` namespace. Kustomize generates hashed ConfigMap and Secret names and updates the Deployment references when their inputs change.
+The configured `K8S_NAMESPACE` must already exist. The cluster must have the Gateway API v1 CRDs installed and an existing Gateway with a listener that accepts routes from that namespace. `make deploy` applies the overlay. Kustomize generates hashed ConfigMap and Secret names and updates the Deployment references when their inputs change.
 
 ## Envoy authorization
 

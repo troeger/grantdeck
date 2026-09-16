@@ -6,6 +6,7 @@ spec:
   parentRefs:
     - name: edge
       namespace: gateway-system
+      sectionName: grantdeck
   hostnames:
     - grantdeck.example.com
   rules:
