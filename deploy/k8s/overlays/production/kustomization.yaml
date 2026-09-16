@@ -1,0 +1,85 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: grantdeck
+resources:
+  - ../../base
+configMapGenerator:
+  - name: grantdeck-config
+    envs:
+      - config.env
+secretGenerator:
+  - name: grantdeck-secret
+    envs:
+      - secret.env
+replacements:
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.ROUTE_HOST
+    targets:
+      - select:
+          group: gateway.networking.k8s.io
+          version: v1
+          kind: HTTPRoute
+          name: grantdeck
+        fieldPaths:
+          - spec.hostnames.0
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.ROUTE_PREFIX
+    targets:
+      - select:
+          group: gateway.networking.k8s.io
+          version: v1
+          kind: HTTPRoute
+          name: grantdeck
+        fieldPaths:
+          - spec.rules.0.matches.0.path.value
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.GATEWAY_NAME
+    targets:
+      - select:
+          group: gateway.networking.k8s.io
+          version: v1
+          kind: HTTPRoute
+          name: grantdeck
+        fieldPaths:
+          - spec.parentRefs.0.name
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.GATEWAY_NAMESPACE
+    targets:
+      - select:
+          group: gateway.networking.k8s.io
+          version: v1
+          kind: HTTPRoute
+          name: grantdeck
+        fieldPaths:
+          - spec.parentRefs.0.namespace
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.PVC_SIZE
+    targets:
+      - select:
+          version: v1
+          kind: PersistentVolumeClaim
+          name: grantdeck-data
+        fieldPaths:
+          - spec.resources.requests.storage
+  - source:
+      kind: ConfigMap
+      name: grantdeck-config
+      fieldPath: data.IMAGE
+    targets:
+      - select:
+          group: apps
+          version: v1
+          kind: Deployment
+          name: grantdeck
+        fieldPaths:
+          - spec.template.spec.containers.[name=grantdeck].image

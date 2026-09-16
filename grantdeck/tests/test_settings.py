@@ -2,6 +2,8 @@ import importlib
 
 import pytest
 from django.core.exceptions import ImproperlyConfigured
+from django.test import override_settings
+from django.test import Client
 
 from grantdeck import settings
 
@@ -15,6 +17,7 @@ GDK_ENV_VARS = [
     'GDK_OIDC_CLIENT_ID',
     'GDK_OIDC_CLIENT_SECRET',
     'GDK_STATIC_TOKEN_MAX_LIFETIME_DAYS',
+    'GDK_SCRIPT_NAME',
 ]
 
 PRODUCTION_ENV = {
@@ -77,6 +80,26 @@ def test_development_settings_keep_local_defaults(monkeypatch):
     assert loaded.SECRET_KEY == 'dev-only-insecure-secret-key-change-me'
     assert loaded.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3'
     assert loaded.DATABASES['default']['NAME'] == str(loaded.BASE_DIR / 'db.sqlite3')
+    assert loaded.FORCE_SCRIPT_NAME is None
+
+
+def test_script_name_can_be_configured(monkeypatch):
+    loaded = reload_settings(
+        monkeypatch,
+        **PRODUCTION_ENV,
+        GDK_SCRIPT_NAME='/grantdeck',
+    )
+
+    assert loaded.FORCE_SCRIPT_NAME == '/grantdeck'
+    assert loaded.STATIC_URL == '/grantdeck/static/'
+
+
+@override_settings(FORCE_SCRIPT_NAME='/grantdeck', LOGIN_URL='/grantdeck/login/')
+def test_reversed_urls_include_script_name():
+    response = Client().get('/')
+
+    assert response.status_code == 302
+    assert response.headers['Location'] == '/grantdeck/login/?next=/grantdeck/'
 
 
 def test_static_token_max_lifetime_can_be_configured(monkeypatch):

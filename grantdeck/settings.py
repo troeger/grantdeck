@@ -52,6 +52,7 @@ DEBUG = IS_DEVELOPMENT
 
 ALLOWED_HOSTS = env_csv('GDK_ALLOWED_HOSTS', required=REQUIRE_PRODUCTION_ENV)
 CSRF_TRUSTED_ORIGINS = env_csv('GDK_CSRF_TRUSTED_ORIGINS')
+FORCE_SCRIPT_NAME = env('GDK_SCRIPT_NAME') or None
 
 BRAND_NAME = env('GDK_BRAND_NAME', 'GrantDeck')
 SSO_LOGIN_BUTTON_TEXT = env('GDK_SSO_LOGIN_BUTTON_TEXT', 'Login with SSO')
@@ -126,9 +127,9 @@ SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.user.user_details',
 )
 
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/login/'
+LOGIN_URL = f'{FORCE_SCRIPT_NAME or ""}/login/'
+LOGIN_REDIRECT_URL = f'{FORCE_SCRIPT_NAME or ""}/'
+LOGOUT_REDIRECT_URL = f'{FORCE_SCRIPT_NAME or ""}/login/'
 MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -165,7 +166,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-STATIC_URL = 'static/'
+STATIC_URL = f'{FORCE_SCRIPT_NAME or ""}/static/'
 
 LOGGING = {
     'version': 1,

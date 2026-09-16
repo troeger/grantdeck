@@ -69,6 +69,27 @@ kubectl exec deploy/grantdeck -- python manage.py showmigrations
 
 On startup, the container runs database migrations and then starts Gunicorn on port 8000. In deployments with multiple replicas, avoid starting several schema-changing revisions at the same time.
 
+## Kubernetes
+
+The `deploy/k8s/overlays/production` Kustomize overlay deploys GrantDeck with SQLite on a 1 Gi PVC and attaches an HTTPRoute to an existing Gateway API Gateway. The Gateway is expected to terminate HTTPS. The deployment uses one replica because SQLite and the PVC are single-writer, and migrations run at container startup.
+
+Create the local credentials file and replace both placeholder values:
+
+```bash
+cp deploy/k8s/overlays/production/secret.env.example deploy/k8s/overlays/production/secret.env
+```
+
+Set a strong random `GDK_SECRET_KEY` and the OIDC client secret. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Update the namespace in `kustomization.yaml`, and set `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `PVC_SIZE`, and `IMAGE` in `config.env` to match your cluster. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
+
+Render and apply the resources with:
+
+```bash
+kubectl kustomize deploy/k8s/overlays/production
+kubectl apply -k deploy/k8s/overlays/production
+```
+
+The cluster must have the Gateway API v1 CRDs installed and an existing Gateway with a listener that accepts routes from the `grantdeck` namespace. Kustomize generates hashed ConfigMap and Secret names and updates the Deployment references when their inputs change.
+
 ## Envoy authorization
 
 GrantDeck is intended to work as AuthZ endpoint for reverse proxies. The project currently focusses on Envoy and AIGateway als primary counter parts.
