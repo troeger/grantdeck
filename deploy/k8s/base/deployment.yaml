@@ -3,9 +3,9 @@ kind: Deployment
 metadata:
   name: grantdeck
 spec:
-  replicas: 1
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/name: grantdeck
@@ -35,8 +35,6 @@ spec:
             - secretRef:
                 name: grantdeck-secret
           volumeMounts:
-            - name: data
-              mountPath: /data
             - name: tmp
               mountPath: /tmp
           startupProbe:
@@ -78,8 +76,5 @@ spec:
               cpu: 1
               memory: 512Mi
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: grantdeck-data
         - name: tmp
           emptyDir: {}

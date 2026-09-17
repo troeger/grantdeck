@@ -73,7 +73,7 @@ On startup, the container runs database migrations and then starts Gunicorn on p
 
 ## Kubernetes
 
-The `deploy/k8s/overlays/production` Kustomize overlay deploys GrantDeck with SQLite on a 1 Gi PVC and attaches an HTTPRoute to an existing Gateway API Gateway. The Gateway is expected to terminate HTTPS. The deployment uses one replica because SQLite and the PVC are single-writer, and migrations run at container startup.
+The `deploy/k8s/overlays/production` Kustomize overlay deploys GrantDeck with two replicas and a single-replica PostgreSQL StatefulSet on persistent storage. It attaches an HTTPRoute to an existing Gateway API Gateway. The Gateway is expected to terminate HTTPS. GrantDeck serializes startup migrations with a PostgreSQL advisory lock.
 
 Create the local credentials file and replace both placeholder values:
 
@@ -81,7 +81,7 @@ Create the local credentials file and replace both placeholder values:
 cp deploy/k8s/overlays/production/secret.env.example deploy/k8s/overlays/production/secret.env
 ```
 
-Set a strong random `GDK_SECRET_KEY` and the OIDC client secret. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Set `K8S_NAMESPACE`, `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `GATEWAY_SECTION`, `PVC_SIZE`, and `IMAGE` in `config.env` to match your cluster. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
+Set a strong random `GDK_SECRET_KEY`, OIDC client secret, and PostgreSQL password. `secret.env` is gitignored. Then edit `config.env` in the same directory for the OIDC issuer and client ID. Set `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_STORAGE`, `K8S_NAMESPACE`, `ROUTE_HOST`, `ROUTE_PREFIX`, `GATEWAY_NAME`, `GATEWAY_NAMESPACE`, `GATEWAY_SECTION`, and `IMAGE` in `config.env` to match your cluster. Set `GDK_DATABASE_URL` in `secret.env` to the PostgreSQL service URL. Keep `GDK_ALLOWED_HOSTS` and `GDK_CSRF_TRUSTED_ORIGINS` aligned with the route hostname. For a non-root prefix such as `/grantdeck`, set both `ROUTE_PREFIX` and `GDK_SCRIPT_NAME` to `/grantdeck`.
 
 To grant Django administrator access to an OIDC account, set `GDK_OIDC_ADMIN_USERNAME` in the generated ConfigMap input. When that username completes OIDC login, GrantDeck promotes the account to superuser and staff. No shell access or local password is required.
 
