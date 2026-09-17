@@ -9,6 +9,27 @@ from apps.authz.models import TOKEN_PREFIX, StaticToken
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_HEADER_NAMES = frozenset({
+    'authorization',
+    'proxy-authorization',
+    'cookie',
+    'set-cookie',
+    'x-api-key',
+    'x-auth-token',
+    'x-csrf-token',
+    'x-current-user',
+    'x-current-project',
+})
+
+
+def _log_incoming_headers(request):
+    headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() not in _SENSITIVE_HEADER_NAMES
+    }
+    logger.debug('incoming headers=%s', dict(sorted(headers.items())))
+
 
 def _log_authz(request, status, result, user='', protected_url='', model=''):
     logger.info(
@@ -43,6 +64,7 @@ def _protected_url(request, protected_path):
 
 @csrf_exempt
 def envoy_authz_check(request, protected_path=''):
+    _log_incoming_headers(request)
     parts = request.headers.get('Authorization', '').split()
     if len(parts) != 2 or parts[0].lower() != 'bearer':
         _log_authz(request, 401, 'unauthorized')

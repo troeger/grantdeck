@@ -324,6 +324,30 @@ def test_valid_bearer_token_logs_result(client, user, token, caplog):
     assert record.authz_status == 200
 
 
+def test_authz_debug_logs_non_sensitive_incoming_headers(client, token, caplog):
+    _, raw = token
+
+    with caplog.at_level(logging.DEBUG, logger='apps.authz.views'):
+        authz(
+            client,
+            raw,
+            **{
+                'x-ai-eg-model': 'bht/large',
+                'x-request-id': 'request-123',
+                'x-api-key': 'secret-api-key',
+            },
+        )
+
+    debug_records = [record for record in caplog.records if record.levelno == logging.DEBUG]
+    assert len(debug_records) == 1
+    message = debug_records[0].getMessage().lower()
+    assert "'x-ai-eg-model': 'bht/large'" in message
+    assert "'x-request-id': 'request-123'" in message
+    assert 'authorization' not in message
+    assert 'secret-api-key' not in message
+    assert 'x-api-key' not in message
+
+
 def test_project_token_allows_assigned_resource(client, user, project, caplog):
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=project, resource=resource)
