@@ -48,6 +48,11 @@ class Project(models.Model):
         through='ProjectResource',
         related_name='projects',
     )
+    allowed_models = models.ManyToManyField(
+        'InferenceModel',
+        related_name='projects',
+        blank=True,
+    )
 
     class Meta:
         ordering = ['name']
@@ -72,6 +77,9 @@ class Project(models.Model):
 
     def allows_url(self, url):
         return self.resource_for_url(url) is not None
+
+    def allows_model(self, model_name):
+        return self.allowed_models.filter(name=model_name).exists()
 
     def set_join_code(self, join_code):
         self.join_code_hash = self.hash_join_code(join_code) if join_code else None
@@ -227,6 +235,17 @@ class Resource(models.Model):
 
     def matches_url(self, url):
         return self.url in self.matching_urls(url)
+
+
+class InferenceModel(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
 
 
 class ProjectResource(models.Model):

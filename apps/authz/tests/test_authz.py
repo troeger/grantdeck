@@ -15,6 +15,7 @@ from social_django.models import Association, Nonce, UserSocialAuth
 from apps.authz.models import (
     MEMBERSHIP_ACTIVE,
     MEMBERSHIP_REQUESTED,
+    InferenceModel,
     Project,
     ProjectMembership,
     ProjectResource,
@@ -59,10 +60,11 @@ def project_admin(user):
     return user
 
 
-def authz(client, raw_token=None, method='get', authorization=None, path='/authz/check/'):
+def authz(client, raw_token=None, method='get', authorization=None, path='/authz/check/', **headers):
     if raw_token:
         authorization = f'Bearer {raw_token}'
     kwargs = {'HTTP_AUTHORIZATION': authorization} if authorization else {}
+    kwargs.update({f'HTTP_{key.upper().replace("-", "_")}': value for key, value in headers.items()})
     return getattr(client, method)(path, **kwargs)
 
 
@@ -333,6 +335,44 @@ def test_project_token_allows_assigned_resource(client, user, project, caplog):
     assert_empty(response, 200)
     record = caplog.records[0]
     assert record.authz_resource_url == 'http://testserver/api/models'
+
+
+def test_project_token_allows_assigned_model(client, user, project, caplog):
+    resource = Resource.objects.create(url='http://testserver/api')
+    ProjectResource.objects.create(project=project, resource=resource)
+    model = InferenceModel.objects.create(name='bht/large')
+    project.allowed_models.add(model)
+    _, raw = StaticToken.create_token(user, 'deploy', 30, project)
+
+    with caplog.at_level(logging.INFO, logger='apps.authz.views'):
+        response = authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'})
+
+    assert_empty(response, 200)
+    assert caplog.records[0].authz_model == 'bht/large'
+
+
+def test_project_token_denies_unassigned_model(client, user, project):
+    resource = Resource.objects.create(url='http://testserver/api')
+    ProjectResource.objects.create(project=project, resource=resource)
+    _, raw = StaticToken.create_token(user, 'deploy', 30, project)
+
+    assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'}), 403)
+
+
+def test_url_only_request_does_not_require_model_grant(client, user, project):
+    resource = Resource.objects.create(url='http://testserver/api')
+    ProjectResource.objects.create(project=project, resource=resource)
+    _, raw = StaticToken.create_token(user, 'deploy', 30, project)
+
+    assert_empty(authz(client, raw, path='/authz/check/api/models'), 200)
+
+
+def test_model_grant_does_not_replace_url_grant(client, user, project):
+    model = InferenceModel.objects.create(name='bht/large')
+    project.allowed_models.add(model)
+    _, raw = StaticToken.create_token(user, 'deploy', 30, project)
+
+    assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'}), 403)
 
 
 def test_project_token_denies_unassigned_resource(client, user, project):

@@ -10,13 +10,14 @@ from apps.authz.models import TOKEN_PREFIX, StaticToken
 logger = logging.getLogger(__name__)
 
 
-def _log_authz(request, status, result, user='', protected_url=''):
+def _log_authz(request, status, result, user='', protected_url='', model=''):
     logger.info(
-        'authz check user=%s result=%s status=%s resource=%s',
+        'authz check user=%s result=%s status=%s resource=%s model=%s',
         user or '-',
         result,
         status,
         protected_url or '-',
+        model or '-',
         extra={
             'authz_user': user,
             'authz_result': result,
@@ -24,6 +25,7 @@ def _log_authz(request, status, result, user='', protected_url=''):
             'authz_method': request.method,
             'authz_path': request.path,
             'authz_resource_url': protected_url,
+            'authz_model': model,
         },
     )
 
@@ -67,8 +69,14 @@ def envoy_authz_check(request, protected_path=''):
         _log_authz(request, 403, 'forbidden', username, protected_url=protected_url)
         return HttpResponse(status=403)
 
+    model = request.headers.get('x-ai-eg-model', '').strip()
+    if model and not token.project.allows_model(model):
+        token.record_denied()
+        _log_authz(request, 403, 'forbidden', username, protected_url, model)
+        return HttpResponse(status=403)
+
     token.record_allowed(resource)
-    _log_authz(request, 200, 'allowed', username, protected_url)
+    _log_authz(request, 200, 'allowed', username, protected_url, model)
     response = HttpResponse(status=200)
     response['x-current-user'] = username
     response['x-current-project'] = token.project.shortcut
