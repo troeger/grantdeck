@@ -91,14 +91,8 @@ def envoy_authz_check(request, protected_path=''):
         _log_authz(request, 403, 'forbidden', username, protected_url=protected_url)
         return HttpResponse(status=403)
 
-    model = request.headers.get('x-ai-eg-model', '').strip()
-    if model and not token.project.allows_model(model):
-        token.record_denied()
-        _log_authz(request, 403, 'forbidden', username, protected_url, model)
-        return HttpResponse(status=403)
-
     token.record_allowed(resource)
-    _log_authz(request, 200, 'allowed', username, protected_url, model)
+    _log_authz(request, 200, 'allowed', username, protected_url)
     response = HttpResponse(status=200)
     response['x-current-user'] = username
     response['x-current-project'] = token.project.shortcut

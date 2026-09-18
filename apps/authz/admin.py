@@ -4,7 +4,7 @@ from django.contrib.auth.models import Group
 from django.db.models import Count
 from social_django.models import Association, Nonce, UserSocialAuth
 
-from apps.authz.models import InferenceModel, Project, ProjectMembership, ProjectResource, Resource, StaticToken
+from apps.authz.models import Project, ProjectMembership, ProjectResource, Resource, StaticToken
 
 
 admin.site.unregister([Group, UserSocialAuth, Nonce, Association])
@@ -87,7 +87,7 @@ class ProjectAdmin(ProjectScopedAdmin):
     form = ProjectAdminForm
     list_display = ['name', 'shortcut', 'end_date', 'administrators_list', 'token_count', 'resource_count']
     search_fields = ['name', 'shortcut']
-    filter_horizontal = ['administrators', 'allowed_models']
+    filter_horizontal = ['administrators']
     inlines = [ProjectMembershipInline, ProjectResourceInline]
 
     def project_for_object(self, project):
@@ -123,7 +123,7 @@ class ProjectAdmin(ProjectScopedAdmin):
         if not request.user.is_superuser:
             return ['name', 'shortcut', 'end_date', 'join_requires_approval', 'join_code', 'clear_join_code']
         return [
-            'name', 'shortcut', 'end_date', 'administrators', 'allowed_models',
+            'name', 'shortcut', 'end_date', 'administrators',
             'join_requires_approval', 'join_code', 'clear_join_code',
         ]
 
@@ -151,12 +151,6 @@ class ProjectAdmin(ProjectScopedAdmin):
 class ResourceAdmin(SuperuserOnlyAdmin):
     list_display = ['url', 'description']
     search_fields = ['url', 'description']
-
-
-@admin.register(InferenceModel)
-class InferenceModelAdmin(SuperuserOnlyAdmin):
-    list_display = ['name', 'description']
-    search_fields = ['name', 'description']
 
 
 @admin.register(ProjectMembership)

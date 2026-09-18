@@ -15,7 +15,6 @@ from social_django.models import Association, Nonce, UserSocialAuth
 from apps.authz.models import (
     MEMBERSHIP_ACTIVE,
     MEMBERSHIP_REQUESTED,
-    InferenceModel,
     Project,
     ProjectMembership,
     ProjectResource,
@@ -361,26 +360,24 @@ def test_project_token_allows_assigned_resource(client, user, project, caplog):
     assert record.authz_resource_url == 'http://testserver/api/models'
 
 
-def test_project_token_allows_assigned_model(client, user, project, caplog):
+def test_project_token_ignores_model_header(client, user, project, caplog):
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=project, resource=resource)
-    model = InferenceModel.objects.create(name='bht/large')
-    project.allowed_models.add(model)
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     with caplog.at_level(logging.INFO, logger='apps.authz.views'):
         response = authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'})
 
     assert_empty(response, 200)
-    assert caplog.records[0].authz_model == 'bht/large'
+    assert caplog.records[0].authz_model == ''
 
 
-def test_project_token_denies_unassigned_model(client, user, project):
+def test_project_token_does_not_deny_model(client, user, project):
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=project, resource=resource)
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
-    assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'}), 403)
+    assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/small'}), 200)
 
 
 def test_url_only_request_does_not_require_model_grant(client, user, project):
@@ -391,9 +388,7 @@ def test_url_only_request_does_not_require_model_grant(client, user, project):
     assert_empty(authz(client, raw, path='/authz/check/api/models'), 200)
 
 
-def test_model_grant_does_not_replace_url_grant(client, user, project):
-    model = InferenceModel.objects.create(name='bht/large')
-    project.allowed_models.add(model)
+def test_model_header_does_not_replace_url_grant(client, user, project):
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/large'}), 403)
