@@ -4,15 +4,22 @@ from django.contrib.auth.models import Group
 from django.db.models import Count
 from social_django.models import Association, Nonce, UserSocialAuth
 
-from apps.authz.models import Project, ProjectMembership, ProjectResource, Resource, StaticToken
+from apps.authz.models import (
+    Project,
+    ProjectLimitClass,
+    ProjectMembership,
+    ProjectModelLimit,
+    Resource,
+    StaticToken,
+)
 
 
 admin.site.unregister([Group, UserSocialAuth, Nonce, Association])
 
 
-class ProjectResourceInline(admin.TabularInline):
-    model = ProjectResource
-    extra = 0
+class ProjectModelLimitInline(admin.TabularInline):
+    model = ProjectModelLimit
+    extra = 1
 
 
 class ProjectMembershipInline(admin.TabularInline):
@@ -30,7 +37,7 @@ class ProjectAdminForm(forms.ModelForm):
 
     class Meta:
         model = Project
-        fields = ['name', 'shortcut', 'end_date', 'administrators', 'join_requires_approval']
+        fields = ['name', 'shortcut', 'end_date', 'administrators', 'limit_class', 'join_requires_approval']
 
     def clean_join_code(self):
         join_code = self.cleaned_data['join_code']
@@ -85,10 +92,10 @@ class ProjectScopedAdmin(admin.ModelAdmin):
 @admin.register(Project)
 class ProjectAdmin(ProjectScopedAdmin):
     form = ProjectAdminForm
-    list_display = ['name', 'shortcut', 'end_date', 'administrators_list', 'token_count', 'resource_count']
+    list_display = ['name', 'shortcut', 'limit_class', 'end_date', 'administrators_list', 'token_count']
     search_fields = ['name', 'shortcut']
     filter_horizontal = ['administrators']
-    inlines = [ProjectMembershipInline, ProjectResourceInline]
+    inlines = [ProjectMembershipInline]
 
     def project_for_object(self, project):
         return project
@@ -99,8 +106,8 @@ class ProjectAdmin(ProjectScopedAdmin):
             .get_queryset(request)
             .annotate(
                 token_count_value=Count('tokens', distinct=True),
-                resource_count_value=Count('resources', distinct=True),
             )
+            .select_related('limit_class')
         )
         if request.user.is_superuser:
             return queryset
@@ -115,15 +122,11 @@ class ProjectAdmin(ProjectScopedAdmin):
     def token_count(self, project):
         return project.token_count_value
 
-    @admin.display(description='Resources')
-    def resource_count(self, project):
-        return project.resource_count_value
-
     def get_fields(self, request, obj=None):
         if not request.user.is_superuser:
             return ['name', 'shortcut', 'end_date', 'join_requires_approval', 'join_code', 'clear_join_code']
         return [
-            'name', 'shortcut', 'end_date', 'administrators',
+            'name', 'shortcut', 'end_date', 'administrators', 'limit_class',
             'join_requires_approval', 'join_code', 'clear_join_code',
         ]
 
@@ -145,6 +148,28 @@ class ProjectAdmin(ProjectScopedAdmin):
         elif form.cleaned_data.get('clear_join_code'):
             obj.set_join_code('')
         super().save_model(request, obj, form, change)
+
+
+@admin.register(ProjectLimitClass)
+class ProjectLimitClassAdmin(SuperuserOnlyAdmin):
+    list_display = ['name', 'slug', 'project_count', 'model_count']
+    search_fields = ['name', 'slug']
+    filter_horizontal = ['resources']
+    inlines = [ProjectModelLimitInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            project_count_value=Count('projects', distinct=True),
+            model_count_value=Count('model_limits', distinct=True),
+        )
+
+    @admin.display(description='Projects')
+    def project_count(self, policy_class):
+        return policy_class.project_count_value
+
+    @admin.display(description='Models')
+    def model_count(self, policy_class):
+        return policy_class.model_count_value
 
 
 @admin.register(Resource)

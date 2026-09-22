@@ -5,11 +5,14 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.conf import settings
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models import Q
+from django.http import HttpResponseForbidden
 from django.views.decorators.cache import never_cache
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from apps.authz.forms import ProjectJoinForm, StaticTokenForm
-from apps.authz.models import Project, ProjectMembership, StaticToken
+from apps.authz.models import MEMBERSHIP_ACTIVE, Project, ProjectMembership, StaticToken
+from apps.authz.quota_status import rows_for_projects
 
 
 NEW_STATIC_TOKEN_SESSION_KEY = '_new_static_token'
@@ -49,6 +52,15 @@ def render_token_overview(request, project_join_form=None, status=200):
             'memberships': ProjectMembership.objects.filter(user=request.user).select_related('project'),
             'project_join_form': project_join_form or ProjectJoinForm(),
             'can_create_token': can_create_token,
+            'quota_rows': rows_for_projects(
+                Project.objects.filter(
+                    Q(projectmembership__user=request.user, projectmembership__status=MEMBERSHIP_ACTIVE)
+                    | Q(administrators=request.user)
+                )
+                .distinct()
+                .select_related('limit_class')
+                .prefetch_related('limit_class__model_limits')
+            ),
         },
         status=status,
     )
@@ -57,6 +69,27 @@ def render_token_overview(request, project_join_form=None, status=200):
 @login_required
 def token_overview(request):
     return render_token_overview(request)
+
+
+@login_required
+def admin_quota_usage(request):
+    if not request.user.is_staff:
+        return HttpResponseForbidden()
+
+    projects = (
+        Project.objects.all()
+        .select_related('limit_class')
+        .prefetch_related('limit_class__model_limits')
+    )
+    return render(
+        request,
+        'frontend/quota_usage.html',
+        {
+            'active_nav': 'quota_usage',
+            'quota_rows': rows_for_projects(projects),
+            'admin_view': True,
+        },
+    )
 
 
 @login_required

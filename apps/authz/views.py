@@ -19,6 +19,8 @@ _SENSITIVE_HEADER_NAMES = frozenset({
     'x-csrf-token',
     'x-current-user',
     'x-current-project',
+    'x-current-quota-key',
+    'x-current-quota-class',
 })
 
 
@@ -96,5 +98,7 @@ def envoy_authz_check(request, protected_path=''):
     response = HttpResponse(status=200)
     response['x-current-user'] = username
     response['x-current-project'] = token.project.shortcut
+    response['x-current-quota-key'] = token.project.quota_key
+    response['x-current-quota-class'] = token.project.limit_class.slug
     response['x-envoy-auth-headers-to-remove'] = 'authorization'
     return response

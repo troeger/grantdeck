@@ -19,6 +19,7 @@ urlpatterns = [
     path('authz/check/', authz_views.envoy_authz_check, name='envoy_authz_check'),
     path('authz/check/<path:protected_path>', authz_views.envoy_authz_check, name='envoy_authz_check'),
     path('', frontend_views.token_overview, name='token_overview'),
+    path('admin/quota-usage/', frontend_views.admin_quota_usage, name='admin_quota_usage'),
     path('tokens/new/', frontend_views.token_create, name='token_create'),
     path('tokens/', frontend_views.create_token, name='create_token'),
     path('tokens/<int:token_id>/delete/', frontend_views.delete_token, name='delete_token'),

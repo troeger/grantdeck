@@ -1,0 +1,12 @@
+{% extends "frontend/base.html" %}
+{% block title %}Project quota usage · {{ brand_name }}{% endblock %}
+
+{% block content %}
+  {% include "frontend/_navbar.html" %}
+
+  <section class="mt-5" aria-labelledby="quota-title">
+    <h1 id="quota-title">Project quota usage</h1>
+    <p class="text-secondary">All projects and configured per-model daily token limits.</p>
+    {% include "frontend/_quota_table.html" %}
+  </section>
+{% endblock %}

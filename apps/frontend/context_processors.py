@@ -21,4 +21,7 @@ def show_admin_link(user):
 
 
 def navigation(request):
-    return {'show_admin_link': show_admin_link(request.user)}
+    return {
+        'show_admin_link': show_admin_link(request.user),
+        'show_quota_admin_link': request.user.is_authenticated and request.user.is_staff,
+    }

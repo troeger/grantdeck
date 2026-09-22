@@ -6,9 +6,19 @@ import pytest
 from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.test import override_settings
+from django.urls import reverse
 from django.utils import timezone
 
-from apps.authz.models import MEMBERSHIP_ACTIVE, Project, ProjectMembership, Resource, StaticToken, TokenResourceUsage
+from apps.authz.models import (
+    MEMBERSHIP_ACTIVE,
+    Project,
+    ProjectLimitClass,
+    ProjectMembership,
+    ProjectModelLimit,
+    Resource,
+    StaticToken,
+    TokenResourceUsage,
+)
 from apps.frontend.context_processors import show_admin_link
 from apps.frontend.pipeline import log_oauth_response, promote_oidc_admin
 from apps.frontend.views import NEW_STATIC_TOKEN_SESSION_KEY
@@ -145,6 +155,71 @@ def test_home_renders_for_authenticated_users(client, user):
     assert response.status_code == 200
     assert response.wsgi_request.user == user
     assert response.context['can_create_token'] is False
+
+
+def test_user_quota_rows_include_active_memberships_and_administered_projects_only(client, user):
+    active_project = create_project(name='Active project')
+    administered_project = create_project(name='Administered project')
+    pending_project = create_project(name='Pending project')
+    unrelated_project = create_project(name='Unrelated project')
+
+    for project in (active_project, administered_project, pending_project, unrelated_project):
+        policy_class = ProjectLimitClass.objects.create(
+            name=f'Class {project.shortcut}',
+            slug=f'class-{project.shortcut.lower()}',
+        )
+        ProjectModelLimit.objects.create(
+            limit_class=policy_class,
+            model_name='bht/medium',
+            daily_token_limit=100_000,
+        )
+        project.limit_class = policy_class
+        project.save(update_fields=['limit_class'])
+
+    ProjectMembership.objects.create(user=user, project=active_project, status=MEMBERSHIP_ACTIVE)
+    ProjectMembership.objects.create(user=user, project=pending_project)
+    administered_project.administrators.add(user)
+    client.force_login(user)
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    rows = response.context['quota_rows']
+    assert {row['project'] for row in rows} == {active_project, administered_project}
+    assert all(row['consumed_tokens'] is None for row in rows)
+    assert all(row['daily_token_limit'] == 100_000 for row in rows)
+
+
+def test_staff_quota_dashboard_lists_all_projects(client, django_user_model):
+    staff = django_user_model.objects.create_user(username='staff', is_staff=True)
+    first = create_project(name='First')
+    second = create_project(name='Second')
+    policy_class = ProjectLimitClass.objects.create(name='Starter', slug='starter')
+    ProjectModelLimit.objects.create(
+        limit_class=policy_class,
+        model_name='bht/small',
+        daily_token_limit=50_000,
+    )
+    first.limit_class = policy_class
+    first.save(update_fields=['limit_class'])
+    client.force_login(staff)
+
+    response = client.get(reverse('admin_quota_usage'))
+
+    assert response.status_code == 200
+    rows = response.context['quota_rows']
+    assert {row['project'] for row in rows} == {first, second}
+    assert response.context['admin_view'] is True
+
+
+def test_non_staff_cannot_open_quota_dashboard_or_see_admin_link(client, user):
+    client.force_login(user)
+
+    response = client.get(reverse('admin_quota_usage'))
+    overview = client.get('/')
+
+    assert response.status_code == 403
+    assert overview.context['show_quota_admin_link'] is False
 
 
 def test_home_allows_token_creation_with_active_project(client, user):

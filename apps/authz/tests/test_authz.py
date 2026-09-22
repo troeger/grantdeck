@@ -16,6 +16,8 @@ from apps.authz.models import (
     MEMBERSHIP_ACTIVE,
     MEMBERSHIP_REQUESTED,
     Project,
+    ProjectLimitClass,
+    ProjectModelLimit,
     ProjectMembership,
     ProjectResource,
     Resource,
@@ -42,8 +44,7 @@ def user(django_user_model):
 @pytest.fixture
 def token(user):
     project = create_project(name='Token project', end_date=timezone.localdate() + timedelta(days=30))
-    Resource.objects.create(url='http://testserver/')
-    ProjectResource.objects.create(project=project, resource=Resource.objects.get(url='http://testserver/'))
+    allow_class_url(project, 'http://testserver/')
     return StaticToken.create_token(user, 'deploy', 30, project)
 
 
@@ -52,6 +53,20 @@ def project(user):
     project = create_project(name='Active project', end_date=timezone.localdate() + timedelta(days=30))
     project.administrators.add(user)
     return project
+
+
+def allow_class_url(project, url):
+    resource, _ = Resource.objects.get_or_create(url=url)
+    policy_class = project.limit_class
+    if policy_class is None:
+        policy_class = ProjectLimitClass.objects.create(
+            name=f'Class for {project.shortcut}',
+            slug=f'class-{project.shortcut.lower()}',
+        )
+        project.limit_class = policy_class
+        project.save(update_fields=['limit_class'])
+    policy_class.resources.add(resource)
+    return resource
 
 
 @pytest.fixture
@@ -98,6 +113,40 @@ def test_create_token_stores_hash_only(user, token):
     assert raw[:-3] not in stored.token_hash
     assert stored.user == user
     assert stored.created_at
+
+
+def test_project_gets_an_opaque_immutable_quota_key(project):
+    original_key = project.quota_key
+    assert original_key.startswith('qk_')
+    assert len(original_key) < 48
+
+    project.quota_key = 'qk_replaced'
+    with pytest.raises(ValidationError):
+        project.save(update_fields=['quota_key'])
+
+    project.refresh_from_db()
+    assert project.quota_key == original_key
+
+
+def test_project_limit_class_resolves_endpoint_and_model_limit(project):
+    resource = Resource.objects.create(url='http://testserver/api')
+    policy_class = ProjectLimitClass.objects.create(name='Basic', slug='basic')
+    policy_class.resources.add(resource)
+    ProjectModelLimit.objects.create(
+        limit_class=policy_class,
+        model_name='bht/medium',
+        daily_token_limit=12_000,
+    )
+    project.limit_class = policy_class
+    project.save(update_fields=['limit_class'])
+
+    assert project.resource_for_url('http://testserver/api/v1/chat/completions') == resource
+    assert project.quota_limit_for_model('bht/medium') == 12_000
+    assert project.quota_limit_for_model('bht/small') is None
+
+    policy_class.slug = 'renamed-basic'
+    with pytest.raises(ValidationError):
+        policy_class.save(update_fields=['slug'])
 
 
 def test_find_valid_returns_unexpired_token(token):
@@ -334,6 +383,7 @@ def test_authz_debug_logs_non_sensitive_incoming_headers(client, token, caplog):
                 'x-ai-eg-model': 'bht/large',
                 'x-request-id': 'request-123',
                 'x-api-key': 'secret-api-key',
+                'x-current-quota-key': 'qk-secret-bucket',
             },
         )
 
@@ -345,24 +395,36 @@ def test_authz_debug_logs_non_sensitive_incoming_headers(client, token, caplog):
     assert 'authorization' not in message
     assert 'secret-api-key' not in message
     assert 'x-api-key' not in message
+    assert 'qk-secret-bucket' not in message
+    assert 'x-current-quota-key' not in message
 
 
 def test_project_token_allows_assigned_resource(client, user, project, caplog):
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     with caplog.at_level(logging.INFO, logger='apps.authz.views'):
         response = authz(client, raw, path='/authz/check/api/models?query=ignored')
 
     assert_empty(response, 200)
+    assert response.headers['x-current-project'] == project.shortcut
+    assert response.headers['x-current-quota-class'] == project.limit_class.slug
+    assert response.headers['x-current-quota-key'] == project.quota_key
     record = caplog.records[0]
     assert record.authz_resource_url == 'http://testserver/api/models'
 
 
-def test_project_token_ignores_model_header(client, user, project, caplog):
+def test_project_token_denies_legacy_project_resource_without_class(client, user):
+    project = create_project(name='Unassigned project')
     resource = Resource.objects.create(url='http://testserver/api')
     ProjectResource.objects.create(project=project, resource=resource)
+    _, raw = StaticToken.create_token(user, 'deploy', 30, project)
+
+    assert_empty(authz(client, raw, path='/authz/check/api/models'), 403)
+
+
+def test_project_token_ignores_model_header(client, user, project, caplog):
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     with caplog.at_level(logging.INFO, logger='apps.authz.views'):
@@ -373,16 +435,14 @@ def test_project_token_ignores_model_header(client, user, project, caplog):
 
 
 def test_project_token_does_not_deny_model(client, user, project):
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert_empty(authz(client, raw, path='/authz/check/api/models', **{'x-ai-eg-model': 'bht/small'}), 200)
 
 
 def test_url_only_request_does_not_require_model_grant(client, user, project):
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert_empty(authz(client, raw, path='/authz/check/api/models'), 200)
@@ -395,8 +455,7 @@ def test_model_header_does_not_replace_url_grant(client, user, project):
 
 
 def test_project_token_denies_unassigned_resource(client, user, project):
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     stored, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     response = authz(client, raw, path='/authz/check/other')
@@ -411,16 +470,14 @@ def test_project_token_denies_unassigned_resource(client, user, project):
 
 def test_token_in_project_without_end_date_allows_assigned_resource(client, user):
     project = create_project(name='No end project')
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert_empty(authz(client, raw, path='/authz/check/api'), 200)
 
 
 def test_project_token_enforces_path_segment_boundary(client, user, project):
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=project, resource=resource)
+    allow_class_url(project, 'http://testserver/api')
     _, raw = StaticToken.create_token(user, 'deploy', 30, project)
 
     assert_empty(authz(client, raw, path='/authz/check/apiary'), 403)
@@ -678,8 +735,7 @@ def test_project_admin_can_change_administered_project_properties(client, projec
 def test_project_admin_sees_only_administered_projects(client, user, project_admin):
     managed = create_project(name='Managed', end_date=timezone.localdate() + timedelta(days=30))
     managed.administrators.add(project_admin)
-    resource = Resource.objects.create(url='http://testserver/api')
-    ProjectResource.objects.create(project=managed, resource=resource)
+    allow_class_url(managed, 'http://testserver/api')
     StaticToken.create_token(user, 'managed-token-1', 30, managed)
     StaticToken.create_token(user, 'managed-token-2', 30, managed)
     create_project(name='Other', end_date=timezone.localdate() + timedelta(days=30))
@@ -690,7 +746,7 @@ def test_project_admin_sees_only_administered_projects(client, user, project_adm
     assert response.status_code == 200
     projects = list(response.context['cl'].queryset)
     assert projects == [managed]
-    assert projects[0].resource_count_value == 1
+    assert projects[0].limit_class == managed.limit_class
 
 
 def test_project_administrator_can_use_membership_admin(client, user):

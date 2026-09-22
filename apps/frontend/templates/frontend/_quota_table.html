@@ -1,0 +1,31 @@
+{% if quota_rows %}
+  <div class="table-responsive">
+    <table class="table table-striped table-sm align-middle">
+      <thead>
+        <tr>
+          {% if admin_view %}<th scope="col">Project</th>{% endif %}
+          <th scope="col">Class / template</th>
+          <th scope="col">Model</th>
+          <th scope="col">Consumed today</th>
+          <th scope="col">Daily limit</th>
+          <th scope="col">Resets</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in quota_rows %}
+          <tr>
+            {% if admin_view %}<th scope="row">{{ row.project.name }}</th>{% endif %}
+            <td>{% if row.policy_class %}{{ row.policy_class.name }}{% else %}<span class="text-secondary">Unassigned</span>{% endif %}</td>
+            <td>{% if row.model_name %}<code>{{ row.model_name }}</code>{% else %}<span class="text-secondary">No model limits configured</span>{% endif %}</td>
+            <td>{% if row.consumed_tokens != None %}{{ row.consumed_tokens }} tokens{% else %}<span class="text-secondary">Unavailable</span>{% endif %}</td>
+            <td>{% if row.daily_token_limit != None %}{{ row.daily_token_limit }} tokens{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+            <td>{% if row.reset_at %}{{ row.reset_at|date:"Y-m-d H:i T" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="small text-secondary">Consumption is read from Envoy's daily rate-limit counters. The value is unavailable when the Redis read fails or the counter is ambiguous.</p>
+{% else %}
+  <p class="text-secondary">No projects are available for quota status.</p>
+{% endif %}

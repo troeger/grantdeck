@@ -108,6 +108,12 @@ checked resource:  https://api.example.com/api/models
 
 GrantDeck returns the authenticated user in the `x-current-user` HTTP header and the project shortcut in the `x-current-project` HTTP header, so both must be enabled in the `allowed_upstream_headers` block for `authorization_response` accordingly.
 
+Each project must also have a superuser-assigned limit class. The class owns the URL resources, model names, and daily token limits. Successful checks return `x-current-quota-class` and an opaque `x-current-quota-key`; forward both from Envoy's authorization response to the AIGateway routes. A project without a class is denied. Existing per-project `ProjectResource` records are retained but do not grant access.
+
+To render the current class/model route and quota resources for review, run `python manage.py export_quota_manifests`. The command emits YAML-compatible JSON documents to standard output; commit and apply the reviewed output through the existing cluster workflow. Do not retain broad legacy GrantDeck routes when enabling class-specific model restrictions.
+
+The quota status views are available to Django staff administrators and to users for projects where they have active membership or are project administrators. The read-only usage reader uses Redis `SCAN` and `GET`, and supports both the currently deployed project-shortcut/legacy-route counters and the exported opaque-project-key/class-route counters. Configure `QUOTA_REDIS_URL` (see `deploy/k8s/overlays/production/config.env.example`) and allow Redis ingress only from Envoy's ratelimit service and GrantDeck. A missing key in the current UTC-day bucket means zero usage; Redis errors, malformed values, or ambiguous keys display as unavailable. The reset is the next UTC daily bucket boundary.
+
 GrantDeck reconstructs the checked URL from the auth request scheme, host, and stripped path. It always uses `X-Forwarded-Proto` and `X-Forwarded-Host`, so configure Envoy to pass values that represent the original client request.
 
 ## Architectural principles

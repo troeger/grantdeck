@@ -5,7 +5,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import IntegrityError, models
 from django.utils import timezone
 
@@ -22,6 +22,47 @@ PROJECT_SHORTCUT_VALIDATOR = RegexValidator(
     r'^[A-Za-z0-9_-]+$',
     'Use only ASCII letters, digits, underscores, and hyphens.',
 )
+PROJECT_QUOTA_CLASS_SLUG_VALIDATOR = RegexValidator(
+    r'^[a-z][a-z0-9-]*$',
+    'Use a lowercase slug beginning with a letter.',
+)
+
+
+def generate_project_quota_key():
+    return f'qk_{secrets.token_urlsafe(32)}'
+
+
+class ProjectLimitClass(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    slug = models.SlugField(
+        max_length=48,
+        unique=True,
+        validators=[PROJECT_QUOTA_CLASS_SLUG_VALIDATOR],
+    )
+    resources = models.ManyToManyField('Resource', blank=True, related_name='limit_classes')
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Project limit class'
+        verbose_name_plural = 'Project limit classes'
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous_slug = type(self).objects.filter(pk=self.pk).values_list('slug', flat=True).first()
+            if previous_slug and self.slug != previous_slug:
+                raise ValidationError({'slug': 'A project limit class slug is immutable.'})
+        super().save(*args, **kwargs)
+
+    def resource_for_url(self, url):
+        resource_urls = Resource.matching_urls(url)
+        return (
+            self.resources.filter(url__in=resource_urls)
+            .order_by('-url')
+            .first()
+        )
 
 
 class Project(models.Model):
@@ -34,6 +75,18 @@ class Project(models.Model):
     end_date = models.DateField(blank=True, null=True, db_index=True)
     join_code_hash = models.CharField(max_length=64, blank=True, null=True, unique=True)
     join_requires_approval = models.BooleanField(default=True)
+    quota_key = models.CharField(
+        max_length=48,
+        unique=True,
+        editable=False,
+    )
+    limit_class = models.ForeignKey(
+        ProjectLimitClass,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        related_name='projects',
+    )
     administrators = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name='administered_projects',
@@ -54,23 +107,33 @@ class Project(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous_key = type(self).objects.filter(pk=self.pk).values_list('quota_key', flat=True).first()
+            if previous_key and self.quota_key != previous_key:
+                raise ValidationError({'quota_key': 'A project quota key is immutable.'})
+        elif not self.quota_key:
+            self.quota_key = generate_project_quota_key()
+        super().save(*args, **kwargs)
+
     @property
     def is_active(self):
         return self.end_date is None or self.end_date >= timezone.localdate()
 
     def resource_for_url(self, url):
-        resource_urls = Resource.matching_urls(url)
-        project_resource = (
-            self.projectresource_set
-            .filter(resource__url__in=resource_urls)
-            .select_related('resource')
-            .order_by('-resource__url')
-            .first()
-        )
-        return project_resource.resource if project_resource else None
+        if self.limit_class_id is None:
+            return None
+        return self.limit_class.resource_for_url(url)
 
     def allows_url(self, url):
         return self.resource_for_url(url) is not None
+
+    def quota_limit_for_model(self, model_name):
+        if self.limit_class_id is None:
+            return None
+        return self.limit_class.model_limits.filter(model_name=model_name).values_list(
+            'daily_token_limit', flat=True,
+        ).first()
 
     def set_join_code(self, join_code):
         self.join_code_hash = self.hash_join_code(join_code) if join_code else None
@@ -226,6 +289,32 @@ class Resource(models.Model):
 
     def matches_url(self, url):
         return self.url in self.matching_urls(url)
+
+
+class ProjectModelLimit(models.Model):
+    limit_class = models.ForeignKey(
+        ProjectLimitClass,
+        on_delete=models.CASCADE,
+        related_name='model_limits',
+    )
+    model_name = models.CharField(max_length=200)
+    daily_token_limit = models.PositiveBigIntegerField(validators=[MinValueValidator(1)])
+
+    class Meta:
+        ordering = ['model_name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['limit_class', 'model_name'],
+                name='unique_project_limit_class_model',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(daily_token_limit__gt=0),
+                name='project_model_daily_limit_positive',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.limit_class}: {self.model_name} ({self.daily_token_limit}/day)'
 
 
 class ProjectResource(models.Model):
