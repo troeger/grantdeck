@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib import admin
+from django.contrib import messages
 from django.contrib.auth.models import Group
 from django.db.models import Count
 from social_django.models import Association, Nonce, UserSocialAuth
@@ -15,6 +16,12 @@ from apps.authz.models import (
 
 
 admin.site.unregister([Group, UserSocialAuth, Nonce, Association])
+
+
+ENVOY_POLICY_UPDATE_MESSAGE = (
+    'Changes are saved. Please note that the Envoy policies must be updated '
+    'to make these changes effective.'
+)
 
 
 class ProjectModelLimitInline(admin.TabularInline):
@@ -156,6 +163,38 @@ class ProjectLimitClassAdmin(SuperuserOnlyAdmin):
     search_fields = ['name', 'slug']
     filter_horizontal = ['resources']
     inlines = [ProjectModelLimitInline]
+
+    def save_related(self, request, form, formsets, change):
+        model_limits_changed = any(formset.has_changed() for formset in formsets)
+        super().save_related(request, form, formsets, change)
+        if model_limits_changed:
+            self.message_user(
+                request,
+                ENVOY_POLICY_UPDATE_MESSAGE,
+                level=messages.WARNING,
+            )
+
+    def delete_model(self, request, obj):
+        has_model_limits = obj.model_limits.exists()
+        super().delete_model(request, obj)
+        if has_model_limits:
+            self.message_user(
+                request,
+                ENVOY_POLICY_UPDATE_MESSAGE,
+                level=messages.WARNING,
+            )
+
+    def delete_queryset(self, request, queryset):
+        has_model_limits = ProjectModelLimit.objects.filter(
+            limit_class__in=queryset,
+        ).exists()
+        super().delete_queryset(request, queryset)
+        if has_model_limits:
+            self.message_user(
+                request,
+                ENVOY_POLICY_UPDATE_MESSAGE,
+                level=messages.WARNING,
+            )
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(
