@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -43,6 +45,19 @@ def reset_project_join_limit(user):
 def render_token_overview(request, project_join_form=None, status=200):
     new_static_token = request.session.pop(NEW_STATIC_TOKEN_SESSION_KEY, None)
     can_create_token = Project.token_projects_for_user(request.user).exists()
+    quota_rows = rows_for_projects(
+        Project.objects.filter(
+            Q(projectmembership__user=request.user, projectmembership__status=MEMBERSHIP_ACTIVE)
+            | Q(administrators=request.user)
+        )
+        .distinct()
+        .select_related('limit_class')
+        .prefetch_related('limit_class__model_limits')
+    )
+    quota_rows_by_project = defaultdict(list)
+    for row in quota_rows:
+        quota_rows_by_project[row['project'].pk].append(row)
+
     return render(
         request,
         'frontend/token_overview.html',
@@ -52,15 +67,8 @@ def render_token_overview(request, project_join_form=None, status=200):
             'memberships': ProjectMembership.objects.filter(user=request.user).select_related('project'),
             'project_join_form': project_join_form or ProjectJoinForm(),
             'can_create_token': can_create_token,
-            'quota_rows': rows_for_projects(
-                Project.objects.filter(
-                    Q(projectmembership__user=request.user, projectmembership__status=MEMBERSHIP_ACTIVE)
-                    | Q(administrators=request.user)
-                )
-                .distinct()
-                .select_related('limit_class')
-                .prefetch_related('limit_class__model_limits')
-            ),
+            'quota_rows': quota_rows,
+            'quota_rows_by_project': quota_rows_by_project,
         },
         status=status,
     )

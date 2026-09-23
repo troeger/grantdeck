@@ -1,12 +1,16 @@
 {% extends "frontend/base.html" %}
+{% load frontend %}
 {% block title %}{{ brand_name }}{% endblock %}
 
 {% block content %}
   {% include "frontend/_navbar.html" %}
 
-  <section class="mt-5" aria-labelledby="projects-title">
+  <section class="dashboard-section" aria-labelledby="projects-title">
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
-      <h1 id="projects-title">Projects</h1>
+      <div>
+        <p class="eyebrow">Workspace</p>
+        <h1 id="projects-title">Projects</h1>
+      </div>
       <div class="d-flex gap-2 flex-wrap">
         <form method="post" action="{% url 'join_project' %}" class="d-flex gap-2">
           {% csrf_token %}
@@ -19,7 +23,7 @@
     {% if memberships %}
       <ul class="list-group mb-4">
         {% for membership in memberships %}
-          <li class="list-group-item">
+          <li class="list-group-item project-card">
             <div class="d-flex justify-content-between gap-3">
               <div>
                 <strong>{{ membership.project.name }}</strong>
@@ -63,11 +67,11 @@
                       <span class="d-block text-secondary">Created: {{ token.created_at|date:"Y-m-d H:i" }}</span>
                       <span class="d-block text-secondary">Expires in: {{ token.expires_at|timeuntil }}</span>
                       <span class="d-block text-secondary">
-                        Usage: {{ token.allowed_count }} allowed, {{ token.denied_count }} denied
+                        Usage: {{ token.allowed_count|token_number }} allowed, {{ token.denied_count|token_number }} denied
                       </span>
                       {% for usage in token.resource_usage.all %}
                         <span class="d-block text-secondary">
-                          {{ usage.resource.url }}: {{ usage.allowed_count }} allowed
+                          Resource usage: {{ usage.allowed_count|token_number }} allowed
                         </span>
                       {% endfor %}
                     </div>
@@ -81,6 +85,28 @@
             {% else %}
               <p class="text-secondary mt-3 mb-0">No Bearer tokens in this project.</p>
             {% endif %}
+
+            <details class="quota-details mt-4">
+              <summary>
+                Quota status
+                {% with project_quota_rows=quota_rows_by_project|get_item:membership.project.id %}
+                  {% for row in project_quota_rows %}
+                    {% if forloop.first %}
+                      <span class="quota-summary-value">
+                        {% if row.consumed_tokens != None %}{{ row.consumed_tokens|token_number }} / {{ row.daily_token_limit|token_number }}{% else %}Unavailable{% endif %}
+                      </span>
+                    {% endif %}
+                  {% empty %}
+                    <span class="quota-summary-value">No limits configured</span>
+                  {% endfor %}
+                {% endwith %}
+              </summary>
+              <div class="mt-3">
+                {% with project_quota_rows=quota_rows_by_project|get_item:membership.project.id %}
+                  {% include "frontend/_quota_table.html" with quota_rows=project_quota_rows %}
+                {% endwith %}
+              </div>
+            </details>
           </li>
         {% endfor %}
       </ul>
@@ -88,11 +114,6 @@
       <p class="text-secondary">No projects.</p>
       <p class="text-secondary">Join a project to start creating bearer tokens.</p>
     {% endif %}
-  </section>
-
-  <section class="mt-5" aria-labelledby="quota-title">
-    <h2 id="quota-title">Project quota status</h2>
-    {% include "frontend/_quota_table.html" %}
   </section>
 
 {% endblock %}

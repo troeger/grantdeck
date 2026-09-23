@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ brand_name }}{% endblock %}</title>
   {% bootstrap_css %}
+  {% block extra_head %}{% endblock %}
   <link rel="stylesheet" href="{% static 'frontend/app.css' %}">
 </head>
 <body>
@@ -17,6 +18,7 @@
     {% endfor %}
     {% block content %}{% endblock %}
   </main>
+  {% block extra_scripts %}{% endblock %}
   <script src="{% static 'frontend/app.js' %}"></script>
 </body>
 </html>

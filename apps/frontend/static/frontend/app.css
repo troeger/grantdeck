@@ -1,3 +1,75 @@
+.navbar {
+  border-bottom: 1px solid #dfe5ec;
+  background: #fff !important;
+}
+
+.brand-mark {
+  display: inline-grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  margin-right: .45rem;
+  place-items: center;
+  border-radius: .55rem;
+  color: #fff;
+  background: #315efb;
+  font-weight: 750;
+}
+
+.dashboard-section {
+  margin-top: 3.25rem;
+}
+
+.eyebrow {
+  margin-bottom: .35rem;
+  color: #315efb;
+  font-size: .75rem;
+  font-weight: 750;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.project-card {
+  margin-bottom: 1rem;
+  border: 1px solid #dfe5ec !important;
+  border-radius: .8rem !important;
+  box-shadow: 0 .2rem .8rem rgba(28, 43, 64, .04);
+}
+
+.quota-details {
+  border-top: 1px solid #edf0f4;
+  padding-top: .9rem;
+}
+
+.quota-details summary {
+  cursor: pointer;
+  color: #315efb;
+  font-weight: 650;
+}
+
+.quota-summary-value {
+  display: inline-block;
+  margin-left: .5rem;
+  color: #526173;
+  font-size: .9rem;
+  font-weight: 500;
+}
+
+.quota-table {
+  margin-bottom: .5rem;
+}
+
+.quota-table code {
+  white-space: nowrap;
+}
+
+.dataTables_wrapper {
+  margin-top: 1rem;
+}
+
+.dataTables_wrapper .dt-layout-row {
+  gap: 1rem;
+}
+
 .login-shell {
   max-width: 28rem;
   min-height: calc(100vh - 6rem);

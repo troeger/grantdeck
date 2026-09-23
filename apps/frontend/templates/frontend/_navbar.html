@@ -1,6 +1,6 @@
 <nav class="navbar navbar-expand navbar-light bg-light mb-4" aria-label="Main menu">
   <div class="container-fluid">
-    <a class="navbar-brand" href="{% url 'token_overview' %}">{{ brand_name }}</a>
+    <a class="navbar-brand" href="{% url 'token_overview' %}"><span class="brand-mark">G</span>{{ brand_name }}</a>
     <ul class="navbar-nav me-auto">
       <li class="nav-item">
         <a class="nav-link{% if active_nav == 'overview' %} active{% endif %}" {% if active_nav == 'overview' %}aria-current="page"{% endif %} href="{% url 'token_overview' %}">Overview</a>
