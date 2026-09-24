@@ -5,7 +5,7 @@
       <thead>
         <tr>
           {% if admin_view %}<th scope="col">Project</th>{% endif %}
-          <th scope="col">Class / template</th>
+          {% if admin_view %}<th scope="col">Class / template</th>{% endif %}
           <th scope="col">Model</th>
           <th scope="col">Consumed today</th>
           <th scope="col">Daily limit</th>
@@ -15,8 +15,12 @@
       <tbody>
         {% for row in quota_rows %}
           <tr>
-            {% if admin_view %}<th scope="row">{{ row.project.name }}</th>{% endif %}
-            <td>{% if row.policy_class %}{{ row.policy_class.name }}{% else %}<span class="text-secondary">Unassigned</span>{% endif %}</td>
+            {% if admin_view %}
+              <th scope="row">{{ row.project.name }}</th>
+            {% endif %}
+            {% if admin_view %}
+              <td>{% if row.policy_class %}{{ row.policy_class.name }}{% else %}<span class="text-secondary">Unassigned</span>{% endif %}</td>
+            {% endif %}            
             <td>{% if row.model_name %}<code>{{ row.model_name }}</code>{% else %}<span class="text-secondary">No model limits configured</span>{% endif %}</td>
             <td{% if row.consumed_tokens != None %} data-order="{{ row.consumed_tokens }}"{% endif %}>{% if row.consumed_tokens != None %}<span title="{{ row.consumed_tokens }} tokens">{{ row.consumed_tokens|token_number }} tokens</span>{% else %}<span class="text-secondary">Unavailable</span>{% endif %}</td>
             <td{% if row.daily_token_limit != None %} data-order="{{ row.daily_token_limit }}"{% endif %}>{% if row.daily_token_limit != None %}<span title="{{ row.daily_token_limit }} tokens per day">{{ row.daily_token_limit|token_number }} tokens</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
@@ -26,7 +30,6 @@
       </tbody>
     </table>
   </div>
-  <p class="small text-secondary">Consumption is read from Envoy's daily rate-limit counters. The value is unavailable when the Redis read fails or the counter is ambiguous.</p>
 {% else %}
   <p class="text-secondary">No projects are available for quota status.</p>
 {% endif %}

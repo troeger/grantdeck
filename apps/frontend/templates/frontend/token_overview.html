@@ -62,18 +62,12 @@
                           </span>
                         </p>
                       {% else %}
-                        <span class="d-block text-secondary">token: {{ token.token_indicator }}</span>
+                        <span class="d-block text-secondary">Hint: {{ token.token_indicator }}</span>
                       {% endif %}
-                      <span class="d-block text-secondary">Created: {{ token.created_at|date:"Y-m-d H:i" }}</span>
-                      <span class="d-block text-secondary">Expires in: {{ token.expires_at|timeuntil }}</span>
+                      <span class="d-block text-secondary">Created: {{ token.created_at|date:"Y-m-d H:i" }}, expires in: {{ token.expires_at|timeuntil }}</span>
                       <span class="d-block text-secondary">
-                        Usage: {{ token.allowed_count|token_number }} allowed, {{ token.denied_count|token_number }} denied
+                        Usage: {{ token.allowed_count|token_number }} requests allowed, {{ token.denied_count|token_number }} denied
                       </span>
-                      {% for usage in token.resource_usage.all %}
-                        <span class="d-block text-secondary">
-                          Resource usage: {{ usage.allowed_count|token_number }} allowed
-                        </span>
-                      {% endfor %}
                     </div>
                     <form method="post" action="{% url 'delete_token' token.id %}">
                       {% csrf_token %}
