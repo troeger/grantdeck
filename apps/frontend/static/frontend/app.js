@@ -17,12 +17,16 @@ document.addEventListener('click', (event) => {
 });
 
 document.querySelectorAll('.js-data-table').forEach((table) => {
-  if (typeof DataTable === 'undefined') return;
+  if (typeof window.DataTable === 'undefined') return;
 
-  new DataTable(table, {
+  new window.DataTable(table, {
     pageLength: Number(table.dataset.pageLength || 25),
     lengthMenu: [10, 25, 50, 100],
-    order: [],
+    order: [[0, 'asc']],
+    columnDefs: [
+      { targets: [3, 4], type: 'num' },
+      { targets: 5, type: 'date' },
+    ],
     language: {
       search: 'Filter projects:',
       emptyTable: 'No projects are available for quota status.',
