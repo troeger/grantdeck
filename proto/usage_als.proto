@@ -32,7 +32,7 @@ message HTTPAccessLogEntry {
 }
 
 message AccessLogCommon {
-  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp start_time = 5;
   // These field numbers must match Envoy's envoy.data.accesslog.v3.AccessLogCommon.
   Metadata metadata = 17;
   string route_name = 19;
