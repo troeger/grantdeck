@@ -137,6 +137,7 @@ def security_policy_document(route_names):
                     'headersToBackend': [
                         'x-current-user',
                         'x-current-project',
+                        'x-current-project-id',
                         'x-current-quota-key',
                         'x-current-quota-class',
                     ],

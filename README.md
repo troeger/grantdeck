@@ -46,6 +46,8 @@ You can use `manage.py createsuperuser` in combination with the `/login/admin` e
 | `GDK_CSRF_COOKIE_SECURE`                  | No                    | No                     | `false`          | Enables Django secure CSRF cookies.                           |
 | `GDK_CSRF_COOKIE_HTTPONLY`                | No                    | No                     | `false`          | Enables Django HTTP-only CSRF cookies.                        |
 | `GDK_LOG_LEVEL`                           | No                    | No                     | `INFO`           | Log level for GrantDeck and Django request logs.               |
+| `GDK_USAGE_METRICS_TOKEN`                 | No                    | No                     | unset            | Secret used by Prometheus to read `/metrics`; unset disables scraping. |
+| `GDK_ALS_PORT`                            | No                    | No                     | `8001`           | Internal gRPC port for Envoy access-log streaming.             |
 
 ## Health checks
 
@@ -69,7 +71,7 @@ The image uses `cgr.dev/chainguard/python:latest` as runtime base image and inte
 kubectl exec deploy/grantdeck -- python manage.py showmigrations
 ```
 
-On startup, the container runs database migrations and then starts Gunicorn on port 8000. In deployments with multiple replicas, avoid starting several schema-changing revisions at the same time.
+On startup, the web container runs database migrations and then starts Gunicorn on port 8000. The same image also runs a separate `usage-receiver` container in the pod on internal gRPC port 8001. In deployments with multiple replicas, avoid starting several schema-changing revisions at the same time.
 
 ## Kubernetes
 
@@ -106,13 +108,17 @@ authz request:     GET /authz/check/api/models
 checked resource:  https://api.example.com/api/models
 ```
 
-GrantDeck returns the authenticated user in the `x-current-user` HTTP header and the project shortcut in the `x-current-project` HTTP header, so both must be enabled in the `allowed_upstream_headers` block for `authorization_response` accordingly.
+GrantDeck returns the authenticated user in the `x-current-user` HTTP header, the project shortcut in `x-current-project`, and the immutable database project ID in `x-current-project-id`; enable all three in the `allowed_upstream_headers` block for `authorization_response` accordingly.
 
 Each project must also have a superuser-assigned limit class. The class owns the URL resources, model names, and daily token limits. Successful checks return `x-current-quota-class` and an opaque `x-current-quota-key`; forward both from Envoy's authorization response to the AIGateway routes. A project without a class is denied. Existing per-project `ProjectResource` records are retained but do not grant access.
 
 To render the current class/model route and quota resources for review, run `python manage.py export_quota_manifests`. The command emits YAML-compatible JSON documents to standard output; commit and apply the reviewed output through the existing cluster workflow. Do not retain broad legacy GrantDeck routes when enabling class-specific model restrictions.
 
-The quota status views are available to Django staff administrators and to users for projects where they have active membership or are project administrators. The read-only usage reader uses Redis `SCAN` and `GET`, and supports both the currently deployed project-shortcut/legacy-route counters and the exported opaque-project-key/class-route counters. Configure `QUOTA_REDIS_URL` (see `deploy/k8s/overlays/production/config.env.example`) and allow Redis ingress only from Envoy's ratelimit service and GrantDeck. A missing key in the current UTC-day bucket means zero usage; Redis errors, malformed values, or ambiguous keys display as unavailable. The reset is the next UTC daily bucket boundary.
+Token accounting is based on Envoy Access Log Service (ALS) records. Envoy forwards the identity headers returned by GrantDeck authorization (`x-current-user`, `x-current-project`, and `x-current-project-id`) and the AI Gateway token metadata (`io.envoy.ai_gateway/llm_total_token`) to the internal `usage-receiver`. GrantDeck stores each request idempotently in PostgreSQL and maintains daily aggregates by user, project, and model. The `/metrics` endpoint exposes those aggregates as `grantdeck_api_tokens_used{user,project,model}`; Prometheus should authenticate with the `GDK_USAGE_METRICS_TOKEN` bearer token. The frontend reads the same database aggregates, so the UI and Prometheus have one authoritative source.
+
+Redis remains only the enforcement backend for Envoy's project-wide daily quota. It is no longer the reporting source. The generated quota policy still keys enforcement by the opaque project quota key; the new project-id header exists for durable accounting and is not a second quota rule.
+
+The Envoy Gateway/EnvoyProxy configuration that enables ALS must point its access-log service at `grantdeck:8001` in the GrantDeck namespace and include the required request headers and dynamic metadata. That gateway configuration is cluster-owned and is intentionally not generated by GrantDeck's HTTPRoute exporter; apply it where the GatewayClass/EnvoyProxy is managed. Restrict port 8001 to the Envoy namespace with the supplied NetworkPolicy.
 
 GrantDeck reconstructs the checked URL from the auth request scheme, host, and stripped path. It always uses `X-Forwarded-Proto` and `X-Forwarded-Host`, so configure Envoy to pass values that represent the original client request.
 

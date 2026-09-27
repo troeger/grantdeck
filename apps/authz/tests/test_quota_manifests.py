@@ -53,6 +53,7 @@ def test_export_generates_class_model_routes_quota_and_auth_resources():
     }]
     assert 'x-current-quota-class' in security['spec']['extAuth']['http']['headersToBackend']
     assert 'x-current-quota-key' in security['spec']['extAuth']['http']['headersToBackend']
+    assert 'x-current-project-id' in security['spec']['extAuth']['http']['headersToBackend']
     assert 'x-ai-eg-model' not in security['spec']['extAuth']['headersToExtAuth']
 
 

@@ -25,7 +25,7 @@ COPY --from=builder --chown=65532:65532 /app /app
 
 WORKDIR /app
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 ENTRYPOINT []
 CMD ["python", "deploy/start.py"]

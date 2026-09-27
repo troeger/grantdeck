@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from apps.authz.forms import ProjectJoinForm, StaticTokenForm
 from apps.authz.models import MEMBERSHIP_ACTIVE, Project, ProjectMembership, StaticToken
-from apps.authz.quota_status import rows_for_projects
+from apps.usage.dashboard import usage_rows_for_projects
 
 
 NEW_STATIC_TOKEN_SESSION_KEY = '_new_static_token'
@@ -45,14 +45,15 @@ def reset_project_join_limit(user):
 def render_token_overview(request, project_join_form=None, status=200):
     new_static_token = request.session.pop(NEW_STATIC_TOKEN_SESSION_KEY, None)
     can_create_token = Project.token_projects_for_user(request.user).exists()
-    quota_rows = rows_for_projects(
+    quota_rows = usage_rows_for_projects(
         Project.objects.filter(
             Q(projectmembership__user=request.user, projectmembership__status=MEMBERSHIP_ACTIVE)
             | Q(administrators=request.user)
         )
         .distinct()
         .select_related('limit_class')
-        .prefetch_related('limit_class__model_limits')
+        .prefetch_related('limit_class__model_limits'),
+        user=request.user,
     )
     quota_rows_by_project = defaultdict(list)
     for row in quota_rows:
@@ -94,7 +95,7 @@ def admin_quota_usage(request):
         'frontend/quota_usage.html',
         {
             'active_nav': 'quota_usage',
-            'quota_rows': rows_for_projects(projects),
+            'quota_rows': usage_rows_for_projects(projects, include_all_users=True),
             'admin_view': True,
         },
     )

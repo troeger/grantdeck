@@ -61,6 +61,10 @@ STATIC_TOKEN_DEFAULT_LIFETIME_DAYS = min(183, STATIC_TOKEN_MAX_LIFETIME_DAYS)
 PROJECT_JOIN_ATTEMPT_LIMIT = int(env('GDK_PROJECT_JOIN_ATTEMPT_LIMIT', '5'))
 PROJECT_JOIN_ATTEMPT_WINDOW_SECONDS = int(env('GDK_PROJECT_JOIN_ATTEMPT_WINDOW_SECONDS', '600'))
 QUOTA_REDIS_URL = env('QUOTA_REDIS_URL', '')
+USAGE_METRICS_TOKEN = env(
+    'GDK_USAGE_METRICS_TOKEN',
+    'dev-only-metrics-token' if IS_DEVELOPMENT else None,
+)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -73,6 +77,7 @@ INSTALLED_APPS = [
     'social_django',
     'apps.authz.apps.AuthzConfig',
     'apps.frontend.apps.FrontendConfig',
+    'apps.usage.apps.UsageConfig',
 ]
 
 MIDDLEWARE = [

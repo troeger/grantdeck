@@ -7,6 +7,7 @@ from django.views.static import serve
 from apps.authz import views as authz_views
 from apps.frontend import views as frontend_views
 from grantdeck import views as grantdeck_views
+from apps.usage.metrics import metrics_response
 
 admin.site.site_header = 'GrantDeck administration'
 admin.site.site_title = 'GrantDeck administration'
@@ -16,6 +17,7 @@ urlpatterns = [
     path('static/<path:path>', serve, {'document_root': settings.STATIC_ROOT}),
     path('healthz/', grantdeck_views.healthz, name='healthz'),
     path('readyz/', grantdeck_views.readyz, name='readyz'),
+    path('metrics', metrics_response, name='metrics'),
     path('authz/check/', authz_views.envoy_authz_check, name='envoy_authz_check'),
     path('authz/check/<path:protected_path>', authz_views.envoy_authz_check, name='envoy_authz_check'),
     path('', frontend_views.token_overview, name='token_overview'),

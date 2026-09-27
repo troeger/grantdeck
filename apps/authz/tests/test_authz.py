@@ -344,6 +344,7 @@ def test_valid_bearer_token_allows_request(client, user, token):
     assert_empty(response, 200)
     assert response.headers['x-current-user'] == user.username
     assert response.headers['x-current-project'] == stored.project.shortcut
+    assert response.headers['x-current-project-id'] == str(stored.project.pk)
     assert response.headers['x-envoy-auth-headers-to-remove'] == 'authorization'
 
 
@@ -408,6 +409,7 @@ def test_project_token_allows_assigned_resource(client, user, project, caplog):
 
     assert_empty(response, 200)
     assert response.headers['x-current-project'] == project.shortcut
+    assert response.headers['x-current-project-id'] == str(project.pk)
     assert response.headers['x-current-quota-class'] == project.limit_class.slug
     assert response.headers['x-current-quota-key'] == project.quota_key
     record = caplog.records[0]

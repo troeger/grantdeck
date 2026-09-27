@@ -11,3 +11,8 @@ spec:
       port: 8000
       targetPort: http
       protocol: TCP
+    - name: als
+      port: 8001
+      targetPort: als
+      protocol: TCP
+      appProtocol: kubernetes.io/h2c

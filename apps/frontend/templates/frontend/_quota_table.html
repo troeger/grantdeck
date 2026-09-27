@@ -4,6 +4,7 @@
     <table class="table table-striped table-sm align-middle quota-table{% if admin_view %} js-data-table{% endif %}"{% if admin_view %} data-page-length="25" aria-label="Project quota usage"{% endif %}>
       <thead>
         <tr>
+          {% if admin_view %}<th scope="col">User</th>{% endif %}
           {% if admin_view %}<th scope="col">Project</th>{% endif %}
           {% if admin_view %}<th scope="col">Class / template</th>{% endif %}
           <th scope="col">Model</th>
@@ -15,6 +16,7 @@
       <tbody>
         {% for row in quota_rows %}
           <tr>
+            {% if admin_view %}<td>{{ row.user_identifier }}</td>{% endif %}
             {% if admin_view %}
               <th scope="row">{{ row.project.name }}</th>
             {% endif %}

@@ -134,6 +134,7 @@ replacements:
           name: grantdeck
         fieldPaths:
           - spec.template.spec.containers.[name=grantdeck].image
+          - spec.template.spec.containers.[name=usage-receiver].image
   - source:
       kind: ConfigMap
       name: grantdeck-config

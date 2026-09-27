@@ -186,7 +186,7 @@ def test_user_quota_rows_include_active_memberships_and_administered_projects_on
     assert response.status_code == 200
     rows = response.context['quota_rows']
     assert {row['project'] for row in rows} == {active_project, administered_project}
-    assert all(row['consumed_tokens'] is None for row in rows)
+    assert all(row['consumed_tokens'] == 0 for row in rows)
     assert all(row['daily_token_limit'] == 100_000 for row in rows)
 
 
