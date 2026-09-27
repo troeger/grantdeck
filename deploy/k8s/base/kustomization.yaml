@@ -4,5 +4,6 @@ resources:
   - deployment.yaml
   - service.yaml
   - networkpolicy.yaml
+  - referencegrant.yaml
   - httproute.yaml
   - postgres.yaml
