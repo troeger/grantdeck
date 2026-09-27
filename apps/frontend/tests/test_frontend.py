@@ -212,6 +212,18 @@ def test_staff_quota_dashboard_lists_all_projects(client, django_user_model):
     assert response.context['admin_view'] is True
 
 
+def test_staff_quota_dashboard_loads_jquery_before_datatables(client, django_user_model):
+    staff = django_user_model.objects.create_user(username='staff', is_staff=True)
+    client.force_login(staff)
+
+    response = client.get(reverse('admin_quota_usage'))
+    body = response.content.decode()
+
+    jquery = body.index('https://code.jquery.com/jquery-3.7.1.slim.min.js')
+    datatables = body.index('https://cdn.datatables.net/2.3.4/js/dataTables.min.js')
+    assert jquery < datatables
+
+
 def test_non_staff_cannot_open_quota_dashboard_or_see_admin_link(client, user):
     client.force_login(user)
 

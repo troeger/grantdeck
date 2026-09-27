@@ -11,13 +11,13 @@ dependencies = [
     "psycopg[binary]>=3,<4",
     "prometheus-client>=0.22,<1",
     "protobuf>=6,<7",
-    "redis>=5,<7",
     "social-auth-app-django>=6.0,<7",
     "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "grpcio-tools==1.74.0",
     "pytest",
     "pytest-django",
 ]
