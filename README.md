@@ -48,6 +48,11 @@ You can use `manage.py createsuperuser` in combination with the `/login/admin` e
 | `GDK_LOG_LEVEL`                           | No                    | No                     | `INFO`           | Log level for GrantDeck and Django request logs.               |
 | `GDK_USAGE_METRICS_TOKEN`                 | No                    | No                     | unset            | Secret used by Prometheus to read `/metrics`; unset disables scraping. |
 | `GDK_ALS_PORT`                            | No                    | No                     | `8001`           | Internal gRPC port for Envoy access-log streaming.             |
+| `GDK_AIGATEWAY_GATEWAY_NAME`              | Yes                   | Yes                    | unset            | AIGateway Gateway name used by exported routes.                |
+| `GDK_AIGATEWAY_GATEWAY_NAMESPACE`         | Yes                   | Yes                    | unset            | AIGateway Gateway namespace used by exported routes.           |
+| `GDK_AIGATEWAY_GATEWAY_SECTION`           | Yes                   | Yes                    | unset            | AIGateway Gateway listener section used by exported routes.    |
+| `GDK_AIGATEWAY_MODELS_OWNER`              | Yes                   | Yes                    | unset            | Owner value emitted for exported AIGateway models.             |
+| `GDK_AIGATEWAY_MODEL_BACKENDS`            | Yes                   | Yes                    | unset            | JSON object mapping policy model names to AIGateway backend refs. |
 
 ## Health checks
 
@@ -118,7 +123,7 @@ GrantDeck returns the authenticated user in the `x-current-user` HTTP header, th
 
 Each project must also have a superuser-assigned limit class. The class owns the URL resources, model names, and daily token limits. Successful checks return `x-current-quota-class` and an opaque `x-current-quota-key`; forward both from Envoy's authorization response to the AIGateway routes. A project without a class is denied.
 
-To render the current class/model route and quota resources for review, run `python manage.py export_quota_manifests`. The command emits YAML-compatible JSON documents to standard output; commit and apply the reviewed output through the existing cluster workflow. 
+To render the current class/model route and quota resources for review, configure the AIGateway variables in `.env` and run `make export_quota_manifests`. The command emits YAML-compatible JSON documents to standard output; commit and apply the reviewed output through the existing cluster workflow. Backend identities are deployment configuration; model names and quota limits remain GrantDeck policy data.
 
 Token accounting is based on Envoy Access Log Service (ALS) records. Envoy forwards the identity headers returned by GrantDeck authorization (`x-current-user`, `x-current-project`, and `x-current-project-id`) and the AI Gateway token metadata (`io.envoy.ai_gateway/llm_total_token`) to the internal `usage-receiver`. GrantDeck stores each request idempotently in PostgreSQL and maintains daily aggregates by user, project, and model. The `/metrics` endpoint exposes those aggregates as `grantdeck_api_tokens_used{user,project,model}`; Prometheus should authenticate with the `GDK_USAGE_METRICS_TOKEN` bearer token. The frontend reads the same database aggregates, so the UI and Prometheus have one authoritative source.
 

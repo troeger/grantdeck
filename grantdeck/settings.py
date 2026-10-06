@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -26,6 +27,33 @@ def env_bool(name, default=False):
 
 def env_csv(name, default='', required=False):
     return [item.strip() for item in env(name, default, required=required).split(',') if item.strip()]
+
+
+def env_json(name, default=None, required=False):
+    value = env(name, default, required=required)
+    if value in (None, ''):
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ImproperlyConfigured(f'{name} must contain valid JSON') from exc
+    if not isinstance(parsed, dict):
+        raise ImproperlyConfigured(f'{name} must contain a JSON object')
+    return parsed
+
+
+def aigateway_model_backends():
+    backends = env_json('GDK_AIGATEWAY_MODEL_BACKENDS', required=REQUIRE_PRODUCTION_ENV)
+    for model_name, backend in backends.items():
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ImproperlyConfigured(
+                'GDK_AIGATEWAY_MODEL_BACKENDS keys must be non-empty model names'
+            )
+        if not isinstance(backend, dict) or not backend.get('name'):
+            raise ImproperlyConfigured(
+                f'GDK_AIGATEWAY_MODEL_BACKENDS[{model_name!r}] must contain a backend name'
+            )
+    return backends
 
 
 def database_config():
@@ -147,6 +175,21 @@ CSRF_COOKIE_SECURE = env_bool('GDK_CSRF_COOKIE_SECURE')
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = env_bool('GDK_CSRF_COOKIE_HTTPONLY')
 GDK_LOG_LEVEL = env('GDK_LOG_LEVEL', 'INFO').upper()
+
+# These values describe the cluster-side AIGateway deployment used by the
+# manifest exporter. They are deliberately not given application defaults.
+AIGATEWAY_GATEWAY_NAME = env('GDK_AIGATEWAY_GATEWAY_NAME', required=REQUIRE_PRODUCTION_ENV)
+AIGATEWAY_GATEWAY_NAMESPACE = env(
+    'GDK_AIGATEWAY_GATEWAY_NAMESPACE', required=REQUIRE_PRODUCTION_ENV
+)
+AIGATEWAY_GATEWAY_SECTION = env(
+    'GDK_AIGATEWAY_GATEWAY_SECTION', required=REQUIRE_PRODUCTION_ENV
+)
+AIGATEWAY_GATEWAY_INTERNAL_SECTION = env(
+    'GDK_AIGATEWAY_GATEWAY_INTERNAL_SECTION', required=REQUIRE_PRODUCTION_ENV
+)
+AIGATEWAY_MODELS_OWNER = env('GDK_AIGATEWAY_MODELS_OWNER', required=REQUIRE_PRODUCTION_ENV)
+AIGATEWAY_MODEL_BACKENDS = aigateway_model_backends()
 
 WSGI_APPLICATION = 'grantdeck.wsgi.application'
 

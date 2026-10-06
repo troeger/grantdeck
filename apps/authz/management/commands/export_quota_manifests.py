@@ -1,25 +1,14 @@
 import json
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.authz.models import ProjectLimitClass
 from apps.authz.quota_keys import exported_route_name
 
 
-# Backend identities are infrastructure configuration, not project policy.
-MODEL_BACKENDS = {
-    'bht/large': {'name': 'a100-openai'},
-    'bht/medium': {
-        'group': 'inference.networking.k8s.io',
-        'kind': 'InferencePool',
-        'name': 'vllm-completion-gemma4',
-    },
-    'bht/small': {'name': 'v100-openai'},
-}
-
-
 def route_document(policy_class, model_limit):
-    backend = MODEL_BACKENDS.get(model_limit.model_name)
+    backend = settings.AIGATEWAY_MODEL_BACKENDS.get(model_limit.model_name)
     if backend is None:
         raise CommandError(
             f'No AIGateway backend mapping exists for model {model_limit.model_name!r}.'
@@ -37,9 +26,15 @@ def route_document(policy_class, model_limit):
             'parentRefs': [{
                 'group': 'gateway.networking.k8s.io',
                 'kind': 'Gateway',
-                'name': 'default',
-                'namespace': 'envoy',
-                'sectionName': 'https-sophia-api',
+                'name': settings.AIGATEWAY_GATEWAY_NAME,
+                'namespace': settings.AIGATEWAY_GATEWAY_NAMESPACE,
+                'sectionName': settings.AIGATEWAY_GATEWAY_SECTION,
+            }, {
+                'group': 'gateway.networking.k8s.io',
+                'kind': 'Gateway',
+                'name': settings.AIGATEWAY_GATEWAY_NAME,
+                'namespace': settings.AIGATEWAY_GATEWAY_NAMESPACE,
+                'sectionName': settings.AIGATEWAY_GATEWAY_INTERNAL_SECTION,
             }],
             'llmRequestCosts': [{'metadataKey': 'llm_total_token', 'type': 'TotalToken'}],
             'rules': [{
@@ -57,7 +52,7 @@ def route_document(policy_class, model_limit):
                         },
                     ],
                 }],
-                'modelsOwnedBy': 'bht',
+                'modelsOwnedBy': settings.AIGATEWAY_MODELS_OWNER,
                 'timeouts': {'request': '30m'},
                 'backendRefs': [backend],
             }],
@@ -130,6 +125,7 @@ def security_policy_document(route_names):
             ],
             'extAuth': {
                 'failOpen': False,
+                'recomputeRoute': True,
                 'headersToExtAuth': ['Authorization', 'X-Forwarded-Proto', 'X-Forwarded-Host'],
                 'http': {
                     'backendRefs': [{'name': 'grantdeck', 'port': 8000}],

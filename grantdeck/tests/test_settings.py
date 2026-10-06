@@ -21,6 +21,12 @@ GDK_ENV_VARS = [
     'GDK_STATIC_TOKEN_MAX_LIFETIME_DAYS',
     'GDK_SCRIPT_NAME',
     'GDK_LOG_LEVEL',
+    'GDK_AIGATEWAY_GATEWAY_NAME',
+    'GDK_AIGATEWAY_GATEWAY_NAMESPACE',
+    'GDK_AIGATEWAY_GATEWAY_SECTION',
+    'GDK_AIGATEWAY_GATEWAY_INTERNAL_SECTION',
+    'GDK_AIGATEWAY_MODELS_OWNER',
+    'GDK_AIGATEWAY_MODEL_BACKENDS',
 ]
 
 PRODUCTION_ENV = {
@@ -30,6 +36,12 @@ PRODUCTION_ENV = {
     'GDK_OIDC_ENDPOINT': 'https://issuer.example.test',
     'GDK_OIDC_CLIENT_ID': 'client-id',
     'GDK_OIDC_CLIENT_SECRET': 'client-secret',
+    'GDK_AIGATEWAY_GATEWAY_NAME': 'test-gateway',
+    'GDK_AIGATEWAY_GATEWAY_NAMESPACE': 'test-gateway-system',
+    'GDK_AIGATEWAY_GATEWAY_SECTION': 'test-api',
+    'GDK_AIGATEWAY_GATEWAY_INTERNAL_SECTION': 'test-internal',
+    'GDK_AIGATEWAY_MODELS_OWNER': 'test-owner',
+    'GDK_AIGATEWAY_MODEL_BACKENDS': '{"bht/large":{"name":"test-backend"}}',
 }
 
 
@@ -148,3 +160,21 @@ def test_database_config_reads_gdk_database_url_in_development(monkeypatch):
     assert database['PASSWORD'] == 'pass'
     assert database['HOST'] == 'db.example'
     assert database['PORT'] == 5432
+
+
+def test_aigateway_backend_mapping_requires_named_backend(monkeypatch):
+    with pytest.raises(ImproperlyConfigured, match='backend name'):
+        reload_settings(
+            monkeypatch,
+            **PRODUCTION_ENV,
+            GDK_AIGATEWAY_MODEL_BACKENDS='{"bht/large": {}}',
+        )
+
+
+def test_aigateway_backend_mapping_rejects_non_object_json(monkeypatch):
+    with pytest.raises(ImproperlyConfigured, match='JSON object'):
+        reload_settings(
+            monkeypatch,
+            **PRODUCTION_ENV,
+            GDK_AIGATEWAY_MODEL_BACKENDS='[]',
+        )
