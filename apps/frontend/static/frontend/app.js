@@ -26,13 +26,13 @@ document.querySelectorAll('.js-data-table').forEach((table) => {
       Number(table.dataset.orderColumn || 0),
       table.dataset.orderDirection || 'asc',
     ]],
-    columnDefs: [
-      { targets: [4, 5, 6], type: 'num' },
-      { targets: 7, type: 'date' },
-    ],
+    columnDefs: table.dataset.numericColumns ? [{
+      targets: table.dataset.numericColumns.split(',').map(Number),
+      type: 'num',
+    }] : [],
     language: {
-      search: 'Filter projects:',
-      emptyTable: 'No projects are available for quota status.',
+      search: 'Search:',
+      emptyTable: 'No matching data is available.',
     },
   });
 });

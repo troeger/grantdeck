@@ -1,4 +1,5 @@
 {% extends "frontend/base.html" %}
+{% load frontend %}
 {% block title %}Project quota usage · {{ brand_name }}{% endblock %}
 
 {% block extra_head %}
@@ -10,8 +11,37 @@
 
   <section class="mt-5" aria-labelledby="quota-title">
     <h1 id="quota-title">Project quota usage</h1>
-    <p class="text-secondary">All projects and configured per-model daily token limits.</p>
-    {% include "frontend/_quota_table.html" %}
+    <p class="text-secondary">Daily quotas reset at {{ quota_reset_at|date:"Y-m-d H:i T" }}.</p>
+
+    <h2 class="h4 mt-4">Project limits</h2>
+    <div class="table-responsive">
+      <table class="table table-striped table-sm align-middle js-data-table" data-page-length="25" data-order-column="4" data-order-direction="desc" data-numeric-columns="3,4" aria-label="Project limits">
+        <thead><tr><th>Project name</th><th>Class</th><th>Model</th><th>Daily limit</th><th>Maximum concurrency</th></tr></thead>
+        <tbody>
+          {% for row in project_limit_rows %}
+            <tr>
+              <th scope="row">{{ row.project.name }}</th>
+              <td>{% if row.policy_class %}{{ row.policy_class.name }}{% else %}<span class="text-secondary">Unassigned</span>{% endif %}</td>
+              <td>{% if row.model_name %}<code>{{ row.model_name }}</code>{% else %}<span class="text-secondary">No model limits configured</span>{% endif %}</td>
+              <td{% if row.daily_token_limit != None %} data-order="{{ row.daily_token_limit }}"{% endif %}>{% if row.daily_token_limit != None %}<span title="{{ row.daily_token_limit }} tokens per day">{{ row.daily_token_limit|token_number }} tokens</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td{% if row.max_parallel_requests != None %} data-order="{{ row.max_parallel_requests }}"{% endif %}>{% if row.max_parallel_requests != None %}{{ row.max_parallel_requests }} request{{ row.max_parallel_requests|pluralize }}{% else %}<span class="text-secondary">Not configured</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="h4 mt-5">Today's user consumption</h2>
+    <div class="table-responsive">
+      <table class="table table-striped table-sm align-middle js-data-table" data-page-length="25" data-order-column="3" data-order-direction="desc" data-numeric-columns="3" aria-label="Today's user consumption">
+        <thead><tr><th>User</th><th>Project</th><th>Model</th><th>Consumed today</th></tr></thead>
+        <tbody>
+          {% for row in user_usage_rows %}
+            <tr><td>{{ row.user_identifier }}</td><td>{{ row.project.name }}</td><td><code>{{ row.model_name }}</code></td><td data-order="{{ row.consumed_tokens }}"><span title="{{ row.consumed_tokens }} tokens">{{ row.consumed_tokens|token_number }} tokens</span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 {% endblock %}
 

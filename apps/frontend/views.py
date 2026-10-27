@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from apps.authz.forms import ProjectJoinForm, StaticTokenForm
 from apps.authz.models import MEMBERSHIP_ACTIVE, Project, ProjectMembership, StaticToken
-from apps.usage.dashboard import usage_rows_for_projects
+from apps.usage.dashboard import next_quota_reset, project_limit_rows, usage_rows_for_projects
 
 
 NEW_STATIC_TOKEN_SESSION_KEY = '_new_static_token'
@@ -90,12 +90,20 @@ def admin_quota_usage(request):
         .select_related('limit_class')
         .prefetch_related('limit_class__model_limits')
     )
+    project_limits = project_limit_rows(projects)
     return render(
         request,
         'frontend/quota_usage.html',
         {
             'active_nav': 'quota_usage',
-            'quota_rows': usage_rows_for_projects(projects, include_all_users=True),
+            'project_limit_rows': project_limits,
+            'user_usage_rows': [
+                row for row in usage_rows_for_projects(projects, include_all_users=True)
+                if row['user_identifier'] != '—' and row['model_name'] is not None
+            ],
+            'quota_reset_at': next_quota_reset(),
+            # Kept as a compatibility alias for callers inspecting this context.
+            'quota_rows': project_limits,
             'admin_view': True,
         },
     )

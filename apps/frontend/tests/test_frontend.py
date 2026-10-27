@@ -194,6 +194,7 @@ def test_user_quota_rows_include_active_memberships_and_administered_projects_on
 
 def test_staff_quota_dashboard_lists_all_projects(client, django_user_model):
     staff = django_user_model.objects.create_user(username='staff', is_staff=True)
+    consumer = django_user_model.objects.create_user(username='consumer')
     first = create_project(name='First')
     second = create_project(name='Second')
     policy_class = ProjectLimitClass.objects.create(name='Starter', slug='starter')
@@ -204,6 +205,7 @@ def test_staff_quota_dashboard_lists_all_projects(client, django_user_model):
     )
     first.limit_class = policy_class
     first.save(update_fields=['limit_class'])
+    StaticToken.create_token(consumer, 'usage token', 30, first)
     client.force_login(staff)
 
     response = client.get(reverse('admin_quota_usage'))
@@ -216,6 +218,12 @@ def test_staff_quota_dashboard_lists_all_projects(client, django_user_model):
     assert b'Not configured' in response.content
     assert b'data-order-column="4"' in response.content
     assert b'data-order-direction="desc"' in response.content
+    assert b'Project limits' in response.content
+    assert b"Today's user consumption" in response.content
+    assert response.content.count(b'js-data-table') == 2
+    assert b'Daily quotas reset at' in response.content
+    assert b'<th scope="col">Resets</th>' not in response.content
+    assert response.context['user_usage_rows'][0]['user_identifier'] == 'consumer'
     assert response.context['admin_view'] is True
 
 

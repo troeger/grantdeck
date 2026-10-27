@@ -63,3 +63,34 @@ def usage_rows_for_projects(projects, *, user=None, include_all_users=False):
                     'reset_at': reset_at,
                 })
     return rows
+
+
+def project_limit_rows(projects):
+    """Build one row per configured project/model limit for the admin dashboard."""
+    rows = []
+    for project in projects:
+        policy_class = project.limit_class
+        limits = list(policy_class.model_limits.all()) if policy_class else []
+        if not limits:
+            rows.append({
+                'project': project,
+                'policy_class': policy_class,
+                'model_name': None,
+                'daily_token_limit': None,
+                'max_parallel_requests': None,
+            })
+            continue
+        for model_limit in limits:
+            rows.append({
+                'project': project,
+                'policy_class': policy_class,
+                'model_name': model_limit.model_name,
+                'daily_token_limit': model_limit.daily_token_limit,
+                'max_parallel_requests': model_limit.max_parallel_requests,
+            })
+    return rows
+
+
+def next_quota_reset():
+    today = datetime.now(timezone.utc).date()
+    return datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
