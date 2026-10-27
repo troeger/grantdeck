@@ -73,6 +73,24 @@ Optional settings:
 
 Envoy calls `/authz/check` with the original protected path appended. A valid token is accepted only when its project is active, has a limit class, and the request is below the configured API prefix.
 
+The public and internal inference listeners use the same authentication
+precedence. Static API keys are read from `x-api-key`; a static key supplied
+only as an `Authorization` bearer token is not accepted.
+
+| Request credentials | Result | GrantDeck limits apply |
+| --- | --- | --- |
+| Valid `Authorization: Bearer gdk_...`; no `x-api-key` | GrantDeck route | Yes |
+| Valid `x-api-key`; no GrantDeck bearer token | Static API-key route | No |
+| Valid GrantDeck bearer token plus any `x-api-key` | GrantDeck route; the static credential is not evaluated for authentication | Yes |
+| Invalid `Bearer gdk_...` plus a valid `x-api-key` | Rejected by GrantDeck; there is no fallback to static authentication | No request is allowed |
+| Non-GrantDeck or dummy `Authorization` value plus a valid `x-api-key` | Static API-key route | No |
+
+A header whose value starts with `Bearer gdk_` selects GrantDeck and takes
+precedence over `x-api-key`. After successful authorization, Envoy recomputes
+the route using the quota-class headers returned by GrantDeck. Consequently,
+both daily token quotas and concurrency policies apply to these requests on
+the public and internal listeners.
+
 Successful checks return:
 
 - `x-current-user`
